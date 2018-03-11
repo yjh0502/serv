@@ -2,7 +2,7 @@ use std;
 use std::marker::PhantomData;
 
 use super::*;
-use resp::*;
+use reply::*;
 
 /// `state_serv_obj` build `HyperService` with given function `F` and state `S`.
 pub fn state_serv_obj<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
@@ -89,6 +89,7 @@ impl<T> AsyncServiceStateW<T> {
         }
     }
 }
+
 impl<T, Req, Resp, E> Service for AsyncServiceStateW<T>
 where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,
@@ -104,8 +105,8 @@ where
     fn call(&self, req: Self::Request) -> Self::Future {
         let obj = self.inner.clone();
         let f = parse_req(req)
-            .and_then(move |req| T::call(&obj, req).then(|res| ok(resp::ServiceResp::from(res))))
-            .or_else(|e| ok(resp::ServiceResp::from(Err(e))))
+            .and_then(move |req| T::call(&obj, req).then(|res| ok(ServiceReply::from(res))))
+            .or_else(|e| ok(ServiceReply::from(Err(e))))
             .and_then(|resp| resp.reply());
         Box::new(f)
     }

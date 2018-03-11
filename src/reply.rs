@@ -1,6 +1,7 @@
 use super::*;
 
-pub trait Resp<T>: serde::Serialize
+/// Oneshot-style reply which contains response or error.
+pub trait Reply<T>: serde::Serialize
 where
     T: serde::Serialize,
 {
@@ -23,31 +24,31 @@ where
 
 #[derive(Serialize)]
 #[serde(tag = "status")]
-pub enum ServiceResp<T: serde::Serialize> {
+pub enum ServiceReply<T: serde::Serialize> {
     #[serde(rename = "ok")]
     Ok { result: T },
     //TODO: reason
     #[serde(rename = "error")]
     Err { reason: String, msg: String },
 }
-impl<T, E> From<Result<T, E>> for ServiceResp<T>
+impl<T, E> From<Result<T, E>> for ServiceReply<T>
 where
     T: serde::Serialize,
     E: std::fmt::Display + std::fmt::Debug,
 {
-    fn from(res: Result<T, E>) -> ServiceResp<T> {
+    fn from(res: Result<T, E>) -> ServiceReply<T> {
         match res {
-            Ok(resp) => ServiceResp::Ok { result: resp },
+            Ok(resp) => ServiceReply::Ok { result: resp },
             Err(e) => {
                 let reason = format!("{}", e);
                 let msg = format!("{:?}", e);
-                ServiceResp::Err { reason, msg }
+                ServiceReply::Err { reason, msg }
             }
         }
     }
 }
 
-impl<T> Resp<T> for ServiceResp<T>
+impl<T> Reply<T> for ServiceReply<T>
 where
     T: serde::Serialize,
 {

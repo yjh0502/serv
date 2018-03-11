@@ -38,7 +38,7 @@ type SyncObj<T> = std::rc::Rc<T>;
 
 pub mod sync;
 pub mod async;
-pub mod resp;
+pub mod reply;
 
 use error::{Error, ErrorKind};
 
@@ -53,8 +53,8 @@ pub fn resp_serv_err<E>(e: E) -> Response
 where
     E: std::fmt::Display + std::fmt::Debug,
 {
-    let resp = resp::ServiceResp::<()>::from(Err(e));
-    let encoded = match serde_json::to_vec(&resp) {
+    let reply = reply::ServiceReply::<()>::from(Err(e));
+    let encoded = match serde_json::to_vec(&reply) {
         Ok(v) => v,
         Err(_e) => return resp_err(),
     };

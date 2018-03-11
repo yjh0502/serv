@@ -12,12 +12,8 @@ where
     Resp: serde::Serialize + 'static,
     E: std::fmt::Display + std::fmt::Debug + 'static,
 {
-    let f = AsyncServiceFn {
-        f: move |req| f(&state, req),
-        _req: Default::default(),
-        _resp: Default::default(),
-    };
-    Box::new(AsyncServiceStateW(SyncObj::new(f)))
+    let f = AsyncServiceFn::new(move |req| f(&state, req));
+    Box::new(AsyncServiceStateW::new(f))
 }
 
 /// `service_obj` builds `HyperService` with given function `F`.
@@ -28,16 +24,12 @@ where
     Resp: serde::Serialize + 'static,
     E: std::fmt::Display + std::fmt::Debug + 'static,
 {
-    let f = AsyncServiceFn {
-        f: f,
-        _req: Default::default(),
-        _resp: Default::default(),
-    };
-    Box::new(AsyncServiceStateW(SyncObj::new(f)))
+    let f = AsyncServiceFn::new(f);
+    Box::new(AsyncServiceStateW::new(f))
 }
 
 /// `AsyncServiceFn` implements `AsyncService` for given `F`
-struct AsyncServiceFn<F, Req, Resp, E>
+pub(crate) struct AsyncServiceFn<F, Req, Resp, E>
 where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>>,
     Req: 'static,
@@ -46,6 +38,20 @@ where
     f: F,
     _req: PhantomData<Req>,
     _resp: PhantomData<Resp>,
+}
+impl<F, Req, Resp, E> AsyncServiceFn<F, Req, Resp, E>
+where
+    F: Fn(Req) -> Box<Future<Item = Resp, Error = E>>,
+    Req: 'static,
+    Resp: 'static,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            f,
+            _req: Default::default(),
+            _resp: Default::default(),
+        }
+    }
 }
 impl<F, Req, Resp, E> AsyncService for AsyncServiceFn<F, Req, Resp, E>
 where
@@ -63,7 +69,7 @@ where
 }
 
 /// Oneshot-style asynchronous service.
-trait AsyncService {
+pub(crate) trait AsyncService {
     type Req;
     type Resp;
     type E;
@@ -72,7 +78,16 @@ trait AsyncService {
 }
 
 /// `AsyncServiceStateW` implementes `tokio_service::Service` for `AsyncService`
-struct AsyncServiceStateW<T>(SyncObj<T>);
+pub(crate) struct AsyncServiceStateW<T> {
+    inner: SyncObj<T>,
+}
+impl<T> AsyncServiceStateW<T> {
+    pub(crate) fn new(t: T) -> Self {
+        Self {
+            inner: SyncObj::new(t),
+        }
+    }
+}
 impl<T, Req, Resp, E> Service for AsyncServiceStateW<T>
 where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,
@@ -86,7 +101,7 @@ where
     type Future = HyperFuture;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        let obj = self.0.clone();
+        let obj = self.inner.clone();
         let f = parse_req(req)
             .and_then(move |req| T::call(&obj, req).then(|res| ok(ServiceResp::from(res))))
             .or_else(|e| ok(ServiceResp::from(Err(e))))

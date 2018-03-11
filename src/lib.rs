@@ -18,10 +18,16 @@ pub mod error {
         }
 
         errors {
-            InvalidJson(e: serde_json::Error) {
+            UnknownMethod(m: hyper::Method) {
+                description("invalid_endpoint")
+            }
+            DecodeJson(e: serde_json::Error) {
                 description("badarg")
             }
-            InvalidQs(e: serde_qs::Error) {
+            EncodeJson(e: serde_json::Error) {
+                description("internal")
+            }
+            DecodeQs(e: serde_qs::Error) {
                 description("badarg")
             }
         }
@@ -102,23 +108,23 @@ where
 {
     use hyper::Method::*;
     match req.method().clone() {
-        Get => {
+        Get | Delete => {
             let qs = req.uri().query().unwrap_or("");
             let req: Result<R, Error> =
-                serde_qs::from_str(qs).map_err(|e| ErrorKind::InvalidQs(e).into());
+                serde_qs::from_str(qs).map_err(|e| ErrorKind::DecodeQs(e).into());
             Box::new(result(req))
         }
-        Post => {
+        Put | Post => {
             let f = req.body()
                 .concat2()
                 .map_err(Error::from)
                 .and_then(move |chunk| {
                     result(serde_json::from_slice(&chunk))
-                        .map_err(|e| ErrorKind::InvalidJson(e).into())
+                        .map_err(|e| ErrorKind::DecodeJson(e).into())
                 });
             Box::new(f)
         }
-        _ => Box::new(err("unknown method".into())),
+        method => Box::new(err(ErrorKind::UnknownMethod(method).into())),
     }
 }
 
@@ -127,7 +133,12 @@ fn reply<Resp>(resp: ServiceResp<Resp>) -> HyperFuture
 where
     Resp: serde::Serialize,
 {
-    let encoded = try_err_resp!(serde_json::to_vec(&resp), "failed to encode resp");
+    let encoded = match serde_json::to_vec(&resp) {
+        Ok(encoded) => encoded,
+        Err(e) => {
+            return Box::new(ok(resp_serv_err::<Error>(ErrorKind::EncodeJson(e).into())));
+        }
+    };
     let body: hyper::Body = encoded.into();
     let resp = hyper::server::Response::new()
         .with_status(hyper::StatusCode::Ok)

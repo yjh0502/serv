@@ -36,6 +36,10 @@ pub mod error {
 
 type SyncObj<T> = std::rc::Rc<T>;
 
+pub mod sync;
+pub mod async;
+pub mod resp;
+
 use error::{Error, ErrorKind};
 
 use futures::*;
@@ -49,7 +53,7 @@ pub fn resp_serv_err<E>(e: E) -> Response
 where
     E: std::fmt::Display + std::fmt::Debug,
 {
-    let resp = ServiceResp::<()>::from(Err(e));
+    let resp = resp::ServiceResp::<()>::from(Err(e));
     let encoded = match serde_json::to_vec(&resp) {
         Ok(v) => v,
         Err(_e) => return resp_err(),
@@ -57,43 +61,6 @@ where
 
     let body: hyper::Body = encoded.into();
     hyper::server::Response::new().with_body(body)
-}
-
-macro_rules! try_err_resp {
-    ($e: expr, $msg: expr) => {
-        match $e {
-            Ok(v) => v,
-            Err(e) => {
-                return Box::new(ok(resp_serv_err(e)));
-            }
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(tag = "status")]
-pub enum ServiceResp<T: serde::Serialize> {
-    #[serde(rename = "ok")]
-    Ok { result: T },
-    //TODO: reason
-    #[serde(rename = "error")]
-    Err { reason: String, msg: String },
-}
-impl<T, E> From<Result<T, E>> for ServiceResp<T>
-where
-    T: serde::Serialize,
-    E: std::fmt::Display + std::fmt::Debug,
-{
-    fn from(res: Result<T, E>) -> ServiceResp<T> {
-        match res {
-            Ok(resp) => ServiceResp::Ok { result: resp },
-            Err(e) => {
-                let reason = format!("{}", e);
-                let msg = format!("{:?}", e);
-                ServiceResp::Err { reason, msg }
-            }
-        }
-    }
 }
 
 pub type HyperFuture = Box<Future<Item = Response, Error = hyper::Error>>;
@@ -127,25 +94,3 @@ where
         method => Box::new(err(ErrorKind::UnknownMethod(method).into())),
     }
 }
-
-/// write reply body
-fn reply<Resp>(resp: ServiceResp<Resp>) -> HyperFuture
-where
-    Resp: serde::Serialize,
-{
-    let encoded = match serde_json::to_vec(&resp) {
-        Ok(encoded) => encoded,
-        Err(e) => {
-            return Box::new(ok(resp_serv_err::<Error>(ErrorKind::EncodeJson(e).into())));
-        }
-    };
-    let body: hyper::Body = encoded.into();
-    let resp = hyper::server::Response::new()
-        .with_status(hyper::StatusCode::Ok)
-        .with_body(body);
-
-    Box::new(ok(resp))
-}
-
-pub mod sync;
-pub mod async;

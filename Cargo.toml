@@ -11,3 +11,6 @@ serde = "1"
 serde_derive = "1"
 serde_json = "1"
 serde_qs = "0.3"
+
+[dev-dependencies]
+tokio-timer = "0.1"

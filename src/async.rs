@@ -1,8 +1,7 @@
-use std;
 use std::marker::PhantomData;
 
 use super::*;
-use reply::*;
+use reply::Reply;
 
 /// `state_serv_obj` build `HyperService` with given function `F` and state `S`.
 pub fn state_serv_obj<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
@@ -11,10 +10,9 @@ where
     S: 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Display + std::fmt::Debug + 'static,
+    E: From<Error> + Debug + Display + 'static,
 {
-    let f = AsyncServiceFn::new(move |req| f(&state, req));
-    Box::new(AsyncServiceStateW::new(f))
+    reply::ServiceReply::state_serv_obj(state, f)
 }
 
 /// `service_obj` builds `HyperService` with given function `F`.
@@ -23,10 +21,9 @@ where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Display + std::fmt::Debug + 'static,
+    E: From<Error> + Debug + Display + 'static,
 {
-    let f = AsyncServiceFn::new(f);
-    Box::new(AsyncServiceStateW::new(f))
+    reply::ServiceReply::serv_obj(f)
 }
 
 /// `AsyncServiceFn` implements `AsyncService` for given `F`
@@ -79,23 +76,26 @@ pub(crate) trait AsyncService {
 }
 
 /// `AsyncServiceStateW` implementes `tokio_service::Service` for `AsyncService`
-pub(crate) struct AsyncServiceStateW<T> {
+pub(crate) struct AsyncServiceStateW<T, Reply> {
     inner: SyncObj<T>,
+    reply: PhantomData<Reply>,
 }
-impl<T> AsyncServiceStateW<T> {
+impl<T, Reply> AsyncServiceStateW<T, Reply> {
     pub(crate) fn new(t: T) -> Self {
         Self {
             inner: SyncObj::new(t),
+            reply: Default::default(),
         }
     }
 }
 
-impl<T, Req, Resp, E> Service for AsyncServiceStateW<T>
+impl<T, Req, Resp, E, Reply> Service for AsyncServiceStateW<T, Reply>
 where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Display + std::fmt::Debug + 'static,
+    E: From<Error> + 'static,
+    Reply: reply::Reply<Resp, E> + 'static,
 {
     type Request = Request;
     type Response = Response;
@@ -105,9 +105,9 @@ where
     fn call(&self, req: Self::Request) -> Self::Future {
         let obj = self.inner.clone();
         let f = parse_req(req)
-            .and_then(move |req| T::call(&obj, req).then(|res| ok(ServiceReply::from(res))))
-            .or_else(|e| ok(ServiceReply::from(Err(e))))
-            .and_then(|resp| resp.reply());
+            .map_err(|e| E::from(e))
+            .and_then(move |req| T::call(&obj, req))
+            .then(|resp| Reply::from(resp).reply());
         Box::new(f)
     }
 }

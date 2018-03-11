@@ -1,9 +1,7 @@
-use std;
-
 use serde;
-use futures::future::*;
 
 use super::*;
+use reply::Reply;
 
 /// `state_serv_obj` builds `HyperService` with given function `F` and state `S`.
 pub fn state_serv_obj<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
@@ -12,10 +10,9 @@ where
     S: 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Display + std::fmt::Debug + 'static,
+    E: From<Error> + Debug + Display + 'static,
 {
-    let f = async::AsyncServiceFn::new(move |req| Box::new(result(f(&state, req))));
-    Box::new(async::AsyncServiceStateW::new(f))
+    reply::ServiceReply::state_serv_obj_sync(state, f)
 }
 
 /// `serv_obj` build `HyperService` with given function `F`.
@@ -24,8 +21,7 @@ where
     F: Fn(Req) -> Result<Resp, E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Display + std::fmt::Debug + 'static,
+    E: From<Error> + Debug + Display + 'static,
 {
-    let f = async::AsyncServiceFn::new(move |req| Box::new(result(f(req))));
-    Box::new(async::AsyncServiceStateW::new(f))
+    reply::ServiceReply::serv_obj_sync(f)
 }

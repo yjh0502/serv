@@ -23,8 +23,8 @@ where
         Box::new(ok(resp))
     }
 
-    /// `state_serv` build `HyperService` with given function `F` and state `S`.
-    fn state_serv<F, S, Req>(state: S, f: F) -> HyperService
+    /// `serv_state` build `HyperService` with given function `F` and state `S`.
+    fn serv_state<F, S, Req>(state: S, f: F) -> HyperService
     where
         Self: 'static,
         F: for<'a> Fn(&'a S, Req) -> Box<Future<Item = T, Error = E>> + 'static,
@@ -46,8 +46,8 @@ where
         Box::new(async::AsyncServiceStateW::<_, Self>::new(f))
     }
 
-    /// `state_serv` builds `HyperService` with given function `F` and state `S`.
-    fn state_serv_sync<F, S, Req>(state: S, f: F) -> HyperService
+    /// `serv_state` builds `HyperService` with given function `F` and state `S`.
+    fn serv_state_sync<F, S, Req>(state: S, f: F) -> HyperService
     where
         Self: 'static,
         F: for<'a> Fn(&'a S, Req) -> Result<T, E> + 'static,

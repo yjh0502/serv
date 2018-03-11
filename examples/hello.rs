@@ -17,7 +17,7 @@ fn hello(_req: serv::Empty) -> serv::error::Result<HelloResp> {
 
 fn main() {
     let addr = ([127, 0, 0, 1], 3000).into();
-    let service = const_service(serv::sync::serv_obj(hello));
+    let service = const_service(serv::sync::serv(hello));
 
     let server = Http::new().bind(&addr, service).unwrap();
     eprintln!("listen: {}", server.local_addr().unwrap());

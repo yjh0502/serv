@@ -28,7 +28,7 @@ fn hello(timer: &Timer, _req: serv::Empty) -> Box<Future<Item = HelloResp, Error
 fn main() {
     let addr = ([127, 0, 0, 1], 3000).into();
     let timer = Timer::default();
-    let service = const_service(serv::async::state_serv_obj(timer, hello));
+    let service = const_service(serv::async::state_serv(timer, hello));
 
     let server = Http::new().bind(&addr, service).unwrap();
     eprintln!("listen: {}", server.local_addr().unwrap());

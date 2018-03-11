@@ -41,7 +41,7 @@ fn add(req: AddReq) -> Result<AddResp> {
 
 fn main() {
     let addr = ([127, 0, 0, 1], 3000).into();
-    let service = const_service(serv::sync::serv_obj(add));
+    let service = const_service(serv::sync::serv(add));
 
     let server = Http::new().bind(&addr, service).unwrap();
     eprintln!("listen: {}", server.local_addr().unwrap());

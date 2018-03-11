@@ -25,7 +25,7 @@ fn main() {
     let state = State {
         counter: Default::default(),
     };
-    let service = const_service(serv::sync::state_serv_obj(state, counter));
+    let service = const_service(serv::sync::state_serv(state, counter));
 
     let server = Http::new().bind(&addr, service).unwrap();
     eprintln!("listen: {}", server.local_addr().unwrap());

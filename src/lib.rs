@@ -36,8 +36,11 @@ use hyper::server::{Request, Response, Service};
 pub fn resp_err() -> Response {
     hyper::server::Response::new().with_status(hyper::StatusCode::InternalServerError)
 }
-pub fn resp_serv_err(msg: String) -> Response {
-    let resp = ServiceResp::Err::<()> { msg };
+pub fn resp_serv_err<E>(e: E) -> Response
+where
+    E: std::fmt::Display + std::fmt::Debug,
+{
+    let resp = ServiceResp::<()>::from(Err(e));
     let encoded = match serde_json::to_vec(&resp) {
         Ok(v) => v,
         Err(_e) => return resp_err(),
@@ -51,9 +54,8 @@ macro_rules! try_err_resp {
     ($e: expr, $msg: expr) => {
         match $e {
             Ok(v) => v,
-            Err(_e) => {
-                let msg = format!("error `{}`: {:?}", $msg, _e);
-                return Box::new(ok(resp_serv_err(msg)));
+            Err(e) => {
+                return Box::new(ok(resp_serv_err(e)));
             }
         }
     }
@@ -66,19 +68,20 @@ pub enum ServiceResp<T: serde::Serialize> {
     Ok { result: T },
     //TODO: reason
     #[serde(rename = "error")]
-    Err { msg: String },
+    Err { reason: String, msg: String },
 }
 impl<T, E> From<Result<T, E>> for ServiceResp<T>
 where
     T: serde::Serialize,
-    E: std::fmt::Debug,
+    E: std::fmt::Display + std::fmt::Debug,
 {
     fn from(res: Result<T, E>) -> ServiceResp<T> {
         match res {
             Ok(resp) => ServiceResp::Ok { result: resp },
             Err(e) => {
+                let reason = format!("{}", e);
                 let msg = format!("{:?}", e);
-                ServiceResp::Err { msg }
+                ServiceResp::Err { reason, msg }
             }
         }
     }

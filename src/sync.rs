@@ -18,7 +18,7 @@ where
     S: 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     let f = SyncServiceFn {
         f: move |req| f(&state, req),
@@ -33,7 +33,7 @@ where
     F: Fn(Req) -> Result<Resp, E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     let f = SyncServiceFn {
         f: f,
@@ -48,7 +48,7 @@ where
     F: Fn(Req) -> Result<Resp, E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     let f = SyncServiceFn {
         f: f,
@@ -64,14 +64,11 @@ where
     S: Service<Request = Req, Response = Resp, Error = E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug,
+    E: std::fmt::Display + std::fmt::Debug,
 {
     let f = parse_req(req)
         .and_then(move |req| s.call(req).then(|res| ok(ServiceResp::from(res))))
-        .or_else(|e| {
-            let msg = format!("{:?}", e);
-            ok(ServiceResp::Err { msg })
-        })
+        .or_else(|e| ok(ServiceResp::from(Err(e))))
         .and_then(reply);
     Box::new(f)
 }
@@ -136,7 +133,7 @@ where
     T: SyncService<Req = Req, Resp = Resp, E = E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     type Request = Request;
     type Response = Response;
@@ -147,10 +144,7 @@ where
         let obj = self.0.clone();
         let f = parse_req(req)
             .and_then(move |req| ok(ServiceResp::from(T::call(&obj, req))))
-            .or_else(|e| {
-                let msg = format!("{:?}", e);
-                ok(ServiceResp::Err { msg })
-            })
+            .or_else(|e| ok(ServiceResp::from(Err(e))))
             .and_then(reply);
         Box::new(f)
     }

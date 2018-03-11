@@ -12,7 +12,7 @@ where
     S: 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     let f = AsyncServiceFn {
         f: move |req| f(&state, req),
@@ -27,7 +27,7 @@ where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     let f = AsyncServiceFn {
         f: f,
@@ -77,7 +77,7 @@ where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: std::fmt::Debug + 'static,
+    E: std::fmt::Display + std::fmt::Debug + 'static,
 {
     type Request = Request;
     type Response = Response;
@@ -88,10 +88,7 @@ where
         let obj = self.0.clone();
         let f = parse_req(req)
             .and_then(move |req| T::call(&obj, req).then(|res| ok(ServiceResp::from(res))))
-            .or_else(|e| {
-                let msg = format!("{:?}", e);
-                ok(ServiceResp::Err { msg })
-            })
+            .or_else(|e| ok(ServiceResp::from(Err(e))))
             .and_then(reply);
         Box::new(f)
     }

@@ -15,19 +15,20 @@ pub mod error {
         foreign_links {
             Hyper(hyper::Error);
             Io(std::io::Error);
-            ParseInt(std::num::ParseIntError);
-            SerdeJson(serde_json::Error);
-            SerdeQs(serde_qs::Error);
         }
 
         errors {
-            InvalidToken {
-                description("invalid token")
+            InvalidJson(e: serde_json::Error) {
+                description("badarg")
+            }
+            InvalidQs(e: serde_qs::Error) {
+                description("badarg")
             }
         }
     }
 }
-use error::Error;
+
+use error::{Error, ErrorKind};
 
 use futures::*;
 use futures::future::*;
@@ -101,14 +102,18 @@ where
     match req.method().clone() {
         Get => {
             let qs = req.uri().query().unwrap_or("");
-            let req: Result<R, Error> = serde_qs::from_str(qs).map_err(Error::from);
+            let req: Result<R, Error> =
+                serde_qs::from_str(qs).map_err(|e| ErrorKind::InvalidQs(e).into());
             Box::new(result(req))
         }
         Post => {
             let f = req.body()
                 .concat2()
                 .map_err(Error::from)
-                .and_then(move |chunk| result(serde_json::from_slice(&chunk)).map_err(Error::from));
+                .and_then(move |chunk| {
+                    result(serde_json::from_slice(&chunk))
+                        .map_err(|e| ErrorKind::InvalidJson(e).into())
+                });
             Box::new(f)
         }
         _ => Box::new(err("unknown method".into())),

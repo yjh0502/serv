@@ -3,10 +3,8 @@ use std::marker::PhantomData;
 
 use super::*;
 
-//TODO: Arc? Rc?
-type SyncObj<T> = std::rc::Rc<T>;
-
-pub fn state_serv_obj_async<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
+/// `state_serv_obj` build `HyperService` with given function `F` and state `S`.
+pub fn state_serv_obj<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
 where
     F: for<'a> Fn(&'a S, Req) -> Box<Future<Item = Resp, Error = E>> + 'static,
     S: 'static,
@@ -22,7 +20,8 @@ where
     Box::new(AsyncServiceStateW(SyncObj::new(f)))
 }
 
-pub fn serv_obj_async<F, Req, Resp, E>(f: F) -> HyperService
+/// `service_obj` builds `HyperService` with given function `F`.
+pub fn serv_obj<F, Req, Resp, E>(f: F) -> HyperService
 where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
@@ -37,6 +36,7 @@ where
     Box::new(AsyncServiceStateW(SyncObj::new(f)))
 }
 
+/// `AsyncServiceFn` implements `AsyncService` for given `F`
 struct AsyncServiceFn<F, Req, Resp, E>
 where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>>,
@@ -62,8 +62,7 @@ where
     }
 }
 
-struct AsyncServiceStateW<T>(SyncObj<T>);
-
+/// Oneshot-style asynchronous service.
 trait AsyncService {
     type Req;
     type Resp;
@@ -72,6 +71,8 @@ trait AsyncService {
     fn call(&self, req: Self::Req) -> Box<Future<Item = Self::Resp, Error = Self::E>>;
 }
 
+/// `AsyncServiceStateW` implementes `tokio_service::Service` for `AsyncService`
+struct AsyncServiceStateW<T>(SyncObj<T>);
 impl<T, Req, Resp, E> Service for AsyncServiceStateW<T>
 where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,

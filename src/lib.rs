@@ -28,6 +28,8 @@ pub mod error {
     }
 }
 
+type SyncObj<T> = std::rc::Rc<T>;
+
 use error::{Error, ErrorKind};
 
 use futures::*;
@@ -134,8 +136,5 @@ where
     Box::new(ok(resp))
 }
 
-mod sync;
-pub use self::sync::*;
-
-mod async;
-pub use self::async::*;
+pub mod sync;
+pub mod async;

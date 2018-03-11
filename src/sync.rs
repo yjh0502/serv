@@ -9,9 +9,7 @@ use hyper::server::{Request, Response, Service};
 
 use super::*;
 
-//TODO: Arc? Rc?
-type SyncObj<T> = std::rc::Rc<T>;
-
+/// `state_serv_obj` builds `HyperService` with given function `F` and state `S`.
 pub fn state_serv_obj<F, S, Req, Resp, E>(state: S, f: F) -> HyperService
 where
     F: for<'a> Fn(&'a S, Req) -> Result<Resp, E> + 'static,
@@ -28,6 +26,7 @@ where
     Box::new(SyncServiceStateW(SyncObj::new(f)))
 }
 
+/// `serv_obj` build `HyperService` with given function `F`.
 pub fn serv_obj<F, Req, Resp, E>(f: F) -> HyperService
 where
     F: Fn(Req) -> Result<Resp, E> + 'static,

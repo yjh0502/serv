@@ -2,6 +2,8 @@
 extern crate error_chain;
 extern crate futures;
 extern crate hyper;
+#[macro_use]
+extern crate log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;

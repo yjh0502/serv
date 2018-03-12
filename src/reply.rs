@@ -95,6 +95,7 @@ where
             Err(e) => {
                 let reason = format!("{}", e);
                 let msg = format!("{:?}", e);
+                trace!("error: {:?}", e);
                 ServiceReply::Err { reason, msg, _e: e }
             }
         }

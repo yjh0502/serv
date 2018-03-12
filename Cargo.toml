@@ -7,6 +7,7 @@ authors = ["yjh0502 <yjh0502@gmail.com>"]
 error-chain = "0.11"
 futures = "0.1"
 hyper = "0.11"
+log = "0.4"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"

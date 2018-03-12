@@ -99,5 +99,5 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug)]
 pub struct Empty {}

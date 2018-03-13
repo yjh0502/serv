@@ -1,4 +1,7 @@
 use super::*;
+
+use std::convert::From;
+use hyper::header::{AccessControlAllowOrigin, ContentLength, ContentType, Headers};
 use async::*;
 
 /// Oneshot-style reply which contains response or error.
@@ -15,8 +18,16 @@ where
                 return Box::new(ok(resp_serv_err::<Error>(ErrorKind::EncodeJson(e).into())));
             }
         };
+
+        let mut headers = Headers::new();
+        headers.set(AccessControlAllowOrigin::Any); //TODO
+        headers.set(ContentType::json());
+        headers.set(ContentLength(encoded.len() as u64));
+
         let body: hyper::Body = encoded.into();
+
         let resp = hyper::server::Response::new()
+            .with_headers(headers)
             .with_status(hyper::StatusCode::Ok)
             .with_body(body);
 

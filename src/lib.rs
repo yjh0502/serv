@@ -7,8 +7,11 @@ extern crate log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate regex;
 extern crate serde_json;
 extern crate serde_qs;
+extern crate tokio_core;
+extern crate url;
 
 pub mod error {
     use super::*;
@@ -41,10 +44,13 @@ type SyncObj<T> = std::rc::Rc<T>;
 pub mod sync;
 pub mod async;
 pub mod reply;
+pub mod server;
+pub mod staticfile;
 
 use std::fmt::{Debug, Display};
 
 pub use error::{Error, ErrorKind};
+pub use server::Server;
 
 use futures::*;
 use futures::future::*;

@@ -28,8 +28,8 @@ impl Service for DefaultUpstream {
     type Future = ResponseFuture;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        let f = Response::new().with_status(match req.method() {
-            &Method::Head | &Method::Get => StatusCode::NotFound,
+        let f = Response::new().with_status(match *req.method() {
+            Method::Head | Method::Get => StatusCode::NotFound,
             _ => StatusCode::BadRequest,
         });
         Box::new(ok(f))
@@ -90,7 +90,7 @@ impl<U> Static<U> {
         Self {
             handle: handle.clone(),
             root: root.into(),
-            upstream: upstream,
+            upstream,
             cache_seconds: 0,
 
             default_headers: Headers::new(),
@@ -128,8 +128,8 @@ where
 
     fn call(&self, req: Request) -> Self::Future {
         // Handle only `GET`/`HEAD` and absolute paths.
-        match req.method() {
-            &Method::Head | &Method::Get => {}
+        match *req.method() {
+            Method::Head | Method::Get => {}
             _ => return self.upstream.call(req),
         }
 
@@ -211,9 +211,9 @@ where
         }
 
         // Stream response body.
-        match req.method() {
-            &Method::Head => {}
-            &Method::Get => {
+        match *req.method() {
+            Method::Head => {}
+            Method::Get => {
                 let file = match File::open(path) {
                     Ok(file) => file,
                     Err(e) => return Box::new(err(Error::Io(e))),

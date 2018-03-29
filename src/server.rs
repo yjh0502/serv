@@ -1,19 +1,14 @@
-use std;
-
 use hyper;
 use futures::*;
 use futures::future::*;
-use hyper::header::{AccessControlAllowOrigin, Headers};
 use hyper::server::{Request, Response, Service};
-use tokio_core::reactor::Handle;
 use regex;
 
 use resp_serv_err;
 use HyperService;
-use staticfile::Static;
 
+#[derive(Default)]
 pub struct Server {
-    //XXX: convert to HashMap?
     routes: Vec<(hyper::Method, regex::Regex, HyperService)>,
 }
 
@@ -46,7 +41,7 @@ impl Service for Server {
         info!("req: {} {}", method, uri);
 
         let path = uri.path();
-        for &(ref route_method, ref route_path, ref serv) in self.routes.iter() {
+        for &(ref route_method, ref route_path, ref serv) in &self.routes {
             if *route_method != method {
                 continue;
             }

@@ -105,7 +105,7 @@ where
     fn call(&self, req: Self::Request) -> Self::Future {
         let obj = self.inner.clone();
         let f = parse_req(req)
-            .map_err(|e| E::from(e))
+            .map_err(E::from)
             .and_then(move |req| T::call(&obj, req))
             .then(|resp| Reply::from(resp).reply());
         Box::new(f)

@@ -92,9 +92,19 @@ where
             Box::new(result(req))
         }
         Put | Post => {
+            let buf = Vec::new();
             let f = req.body()
-                .concat2()
                 .map_err(Error::from)
+                .fold(buf, |mut buf, chunk| {
+                    buf.extend_from_slice(&chunk);
+                    //TODO: move to config?
+                    let res = if buf.len() > 1024 * 1024 * 4 {
+                        Err(Error::from("body too large"))
+                    } else {
+                        Ok(buf)
+                    };
+                    result(res)
+                })
                 .and_then(move |chunk| {
                     result(serde_json::from_slice(&chunk))
                         .map_err(|e| ErrorKind::DecodeJson(e).into())

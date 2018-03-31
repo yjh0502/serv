@@ -9,15 +9,14 @@ use std::time::*;
 
 use hyper::server::{const_service, Http};
 use futures::*;
-use tokio_timer::*;
 
 #[derive(Serialize)]
 struct HelloResp {
     msg: String,
 }
-fn hello(timer: &Timer, _req: serv::Empty) -> Box<Future<Item = HelloResp, Error = serv::Error>> {
-    let f = timer
-        .sleep(Duration::from_secs(1))
+fn hello(_req: serv::Empty) -> Box<Future<Item = HelloResp, Error = serv::Error>> {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let f = tokio_timer::Delay::new(deadline)
         .map_err(|_e| "timer failed".into())
         .map(|_| HelloResp {
             msg: "hello, world".to_owned(),
@@ -27,8 +26,7 @@ fn hello(timer: &Timer, _req: serv::Empty) -> Box<Future<Item = HelloResp, Error
 
 fn main() {
     let addr = ([127, 0, 0, 1], 3000).into();
-    let timer = Timer::default();
-    let service = const_service(serv::async::serv_state(timer, hello));
+    let service = const_service(serv::async::serv(hello));
 
     let server = Http::new().bind(&addr, service).unwrap();
     eprintln!("listen: {}", server.local_addr().unwrap());

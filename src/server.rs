@@ -1,11 +1,11 @@
-use hyper;
-use futures::*;
 use futures::future::*;
+use futures::*;
+use hyper;
 use hyper::server::{Request, Response, Service};
 use regex;
 
-use resp_serv_err;
 use HyperService;
+use resp_serv_err;
 
 #[derive(Default)]
 pub struct Server {

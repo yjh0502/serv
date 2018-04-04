@@ -41,19 +41,19 @@ pub mod error {
 
 type SyncObj<T> = std::rc::Rc<T>;
 
-pub mod sync;
 pub mod async;
 pub mod reply;
 pub mod server;
 pub mod staticfile;
+pub mod sync;
 
 use std::fmt::{Debug, Display};
 
 pub use error::{Error, ErrorKind};
 pub use server::Server;
 
-use futures::*;
 use futures::future::*;
+use futures::*;
 use hyper::server::{Request, Response, Service};
 
 pub fn resp_err() -> Response {

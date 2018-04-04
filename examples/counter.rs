@@ -4,8 +4,8 @@ extern crate hyper;
 extern crate serde_derive;
 extern crate serv;
 
-use std::sync::atomic::*;
 use hyper::server::{const_service, Http};
+use std::sync::atomic::*;
 
 struct State {
     counter: AtomicUsize,

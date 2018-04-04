@@ -1,15 +1,15 @@
-use std::path::PathBuf;
 use std::fs::{self, File};
 use std::io::{ErrorKind as IoErrorKind, Read};
+use std::path::PathBuf;
 use std::{mem, time};
 
-use futures::{Async, Future, Poll, Sink, Stream};
 use futures::future::*;
 use futures::sync::mpsc::SendError;
+use futures::{Async, Future, Poll, Sink, Stream};
 
-use hyper::{header, Body, Chunk, Error, Method, StatusCode};
-use hyper::server::{Request, Response, Service};
 use hyper::header::Headers;
+use hyper::server::{Request, Response, Service};
+use hyper::{header, Body, Chunk, Error, Method, StatusCode};
 
 use tokio_core::reactor::Handle;
 

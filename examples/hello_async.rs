@@ -7,8 +7,8 @@ extern crate tokio_timer;
 
 use std::time::*;
 
-use hyper::server::{const_service, Http};
 use futures::*;
+use hyper::server::{const_service, Http};
 use tokio_timer::*;
 
 #[derive(Serialize)]

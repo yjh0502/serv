@@ -1,7 +1,7 @@
 use hyper::server::Request;
-use std::path::{Component, Path, PathBuf};
-use std::fs::{self, Metadata};
 use std::convert::AsRef;
+use std::fs::{self, Metadata};
+use std::path::{Component, Path, PathBuf};
 use url::percent_encoding::percent_decode;
 
 pub struct RequestedPath {

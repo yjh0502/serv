@@ -1,8 +1,8 @@
 use super::*;
 
-use std::convert::From;
-use hyper::header::{AccessControlAllowOrigin, ContentLength, ContentType, Headers};
 use async::*;
+use hyper::header::{AccessControlAllowOrigin, ContentLength, ContentType, Headers};
+use std::convert::From;
 
 /// Oneshot-style reply which contains response or error.
 pub trait Reply<T, E>: serde::Serialize + From<Result<T, E>>

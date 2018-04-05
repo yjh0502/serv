@@ -1,5 +1,4 @@
 use futures::future::*;
-use futures::*;
 use hyper;
 use hyper::server::{Request, Response, Service};
 use regex;

@@ -54,6 +54,7 @@ pub use server::Server;
 
 use futures::future::*;
 use futures::*;
+use hyper::header::AccessControlAllowOrigin;
 use hyper::server::{Request, Response, Service};
 
 pub fn resp_err() -> Response {
@@ -70,7 +71,9 @@ where
     };
 
     let body: hyper::Body = encoded.into();
-    hyper::server::Response::new().with_body(body)
+    hyper::server::Response::new()
+        .with_header(AccessControlAllowOrigin::Any)
+        .with_body(body)
 }
 
 pub type HyperFuture = Box<Future<Item = Response, Error = hyper::Error>>;

@@ -1,10 +1,16 @@
-use futures::future::*;
-use hyper;
-use hyper::server::{Request, Response, Service};
-use regex;
+use std;
+use std::rc::Rc;
 
-use HyperService;
+use futures::future::*;
+use futures::*;
+use hyper;
+use hyper::server::{Http, Request, Response, Service};
+use regex;
+use tokio_core::reactor::Handle;
+
+use error::*;
 use resp_serv_err;
+use HyperService;
 
 #[derive(Default)]
 pub struct Server {
@@ -25,6 +31,42 @@ impl Server {
     pub fn push_exp(&mut self, method: hyper::Method, regexp: &str, service: HyperService) {
         let re: regex::Regex = regexp.parse().unwrap();
         self.routes.push((method, re, service));
+    }
+
+    pub fn run(
+        self,
+        addr: std::net::SocketAddr,
+        handle: Handle,
+    ) -> Box<Future<Item = (), Error = Error>> {
+        let server = Rc::new(self);
+
+        let incoming = match ::listener::AddrIncoming::new(addr, handle.clone()) {
+            Ok(v) => v,
+            Err(e) => return Box::new(err(Error::from(e))),
+        };
+        let serve = Http::new()
+        // use conservative value
+        .max_buf_size(1024 * 16)
+        .serve_incoming(incoming, move || Ok(server.clone()));
+
+        /*
+        let serve = Http::new()
+            .serve_addr_handle(&addr, &handle, move || Ok(server.clone()))
+            .unwrap();
+            */
+
+        let f_listen = serve
+            .for_each(move |conn| {
+                handle.spawn(
+                    conn.map(|_| ())
+                        .map_err(|err| error!("serve error: {:?}", err)),
+                );
+                ok(())
+            })
+            .into_future()
+            .map_err(Error::from);
+
+        Box::new(f_listen)
     }
 }
 

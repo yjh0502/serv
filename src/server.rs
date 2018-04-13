@@ -21,6 +21,86 @@ pub struct Server {
     routes: Vec<(hyper::Method, regex::Regex, HyperService)>,
 }
 
+fn handle_h2c(
+    server: Rc<Server>,
+    handle: Handle,
+    req: http::Request<h2::RecvStream>,
+    mut respond: h2::server::SendResponse<Bytes>,
+) {
+    eprintln!("req: {:?}", req);
+
+    let req = hyper::Request::from(req.map(|recv_stream| {
+        let (sender, body) = hyper::Body::pair();
+
+        let f = recv_stream
+            .map_err(|_e| {
+                //TODO
+                ()
+            })
+            .fold(sender, |sender, bytes| {
+                eprintln!("data< {:?}", bytes);
+                let chunk = hyper::Chunk::from(bytes);
+                sender.send(Ok(chunk)).map_err(|_e| {
+                    //TODO
+                    ()
+                })
+            })
+            .map_err(|_e| {
+                //TODO: error handling
+                eprintln!("error on recv: {:?}", _e);
+            })
+            .map(|_sender| ());
+        handle.spawn(f);
+
+        body
+    }));
+
+    let f = server
+        .call(req)
+        .and_then(
+            move |resp| -> Box<Future<Item = (), Error = hyper::Error>> {
+                eprintln!("resp: {:?}", resp);
+
+                let mut body = None;
+                let resp = http::Response::from(resp).map(|_body| {
+                    body = Some(_body);
+                    ()
+                });
+
+                let send_stream = match respond.send_response(resp, false) {
+                    Ok(s) => s,
+                    Err(_e) => {
+                        eprintln!("error on send_response: {:?}", _e);
+                        return Box::new(err(hyper::Error::Method));
+                    }
+                };
+                let body = body.unwrap_or_default();
+
+                let f = body.map_err(|_e| {
+                    eprintln!("error on resp body: {:?}", _e);
+                    h2::Reason::NO_ERROR.into()
+                }).fold(send_stream, |mut sender, chunk| {
+                        eprintln!("data> {:?}", chunk);
+                        //TODO
+                        sender.send_data(chunk.into(), false)?;
+                        Ok::<_, h2::Error>(sender)
+                    })
+                    .and_then(|mut sender| sender.send_data(Vec::new().into(), true));
+
+                Box::new(f.map_err(|_e| {
+                    eprintln!("error on resp body: {:?}", _e);
+                    hyper::Error::Method
+                }))
+            },
+        )
+        .map_err(|_e| {
+            eprintln!("error on call: {:?}", _e);
+            ()
+        });
+
+    handle.spawn(f)
+}
+
 impl Server {
     pub fn new() -> Self {
         Self { routes: Vec::new() }
@@ -90,69 +170,9 @@ impl Server {
                 .and_then(move |conn| {
                     info!("H2 connection bound");
 
-                    conn.for_each(move |(req, mut respond)| {
-                        let req = hyper::Request::from(req.map(|recv_stream| {
-                            let (sender, body) = hyper::Body::pair();
-
-                            let f = recv_stream
-                                .map_err(|_e| {
-                                    //TODO
-                                    ()
-                                })
-                                .fold(sender, |sender, bytes| {
-                                    let chunk = hyper::Chunk::from(bytes);
-                                    sender.send(Ok(chunk)).map_err(|_e| {
-                                        //TODO
-                                        ()
-                                    })
-                                })
-                                .then(|_| {
-                                    //TODO: error handling
-                                    Ok(())
-                                });
-                            handle0.spawn(f);
-
-                            body
-                        }));
-
-                        let f = server
-                            .call(req)
-                            .and_then(
-                                move |resp| -> Box<Future<Item = (), Error = hyper::Error>> {
-                                    let mut body = None;
-                                    let resp = http::Response::from(resp).map(|_body| {
-                                        body = Some(_body);
-                                        ()
-                                    });
-
-                                    let send_stream = match respond.send_response(resp, false) {
-                                        Ok(s) => s,
-                                        Err(_e) => return Box::new(err(hyper::Error::Method)),
-                                    };
-
-                                    let f = body.unwrap_or_default()
-                                        .map_err(|_e| h2::Reason::NO_ERROR.into())
-                                        .fold(
-                                            send_stream,
-                                            |mut sender,
-                                             chunk|
-                                             -> std::result::Result<
-                                                h2::SendStream<Bytes>,
-                                                h2::Error,
-                                            > {
-                                                //TODO
-                                                sender.send_data(chunk.into(), false)?;
-                                                Ok(sender)
-                                            },
-                                        )
-                                        .and_then(|mut sender| {
-                                            sender.send_data(Vec::new().into(), true)
-                                        });
-                                    Box::new(f.map_err(|_e| hyper::Error::Method))
-                                },
-                            )
-                            .map_err(|_e| h2::Reason::NO_ERROR.into());
-                        f
+                    conn.for_each(move |(req, respond)| {
+                        handle_h2c(server.clone(), handle0.clone(), req, respond);
+                        Ok(())
                     })
                 })
                 .and_then(|_| Ok(()))

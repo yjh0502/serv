@@ -8,6 +8,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate bytes;
+extern crate h2;
+extern crate http;
 extern crate net2;
 extern crate regex;
 extern crate serde_json;

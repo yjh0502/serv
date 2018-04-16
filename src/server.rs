@@ -124,20 +124,9 @@ impl Server {
     ) -> Box<Future<Item = (), Error = Error>> {
         let server = Rc::new(self);
 
-        let incoming = match ::listener::AddrIncoming::new(addr, handle.clone()) {
-            Ok(v) => v,
-            Err(e) => return Box::new(err(Error::from(e))),
-        };
-        let serve = Http::new()
-        // use conservative value
-        .max_buf_size(1024 * 16)
-        .serve_incoming(incoming, move || Ok(server.clone()));
-
-        /*
         let serve = Http::new()
             .serve_addr_handle(&addr, &handle, move || Ok(server.clone()))
             .unwrap();
-            */
 
         let f_listen = serve
             .for_each(move |conn| {

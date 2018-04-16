@@ -1,17 +1,17 @@
+extern crate bytes;
 #[macro_use]
 extern crate error_chain;
 extern crate futures;
+extern crate h2;
+extern crate http;
 extern crate hyper;
 #[macro_use]
 extern crate log;
+extern crate net2;
+extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate bytes;
-extern crate h2;
-extern crate http;
-extern crate net2;
-extern crate regex;
 extern crate serde_json;
 extern crate serde_qs;
 extern crate tokio_core;
@@ -47,7 +47,6 @@ pub mod error {
 type SyncObj<T> = std::rc::Rc<T>;
 
 pub mod async;
-mod listener;
 pub mod reply;
 pub mod server;
 pub mod staticfile;

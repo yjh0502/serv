@@ -1,7 +1,8 @@
 use super::*;
 
 use async::*;
-use hyper::header::{AccessControlAllowOrigin, ContentLength, ContentType, Headers};
+use hyper::header::{AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength,
+                    ContentType, Headers};
 use std::convert::From;
 
 /// Oneshot-style reply which contains response or error.
@@ -21,6 +22,11 @@ where
 
         let mut headers = Headers::new();
         headers.set(AccessControlAllowOrigin::Any); //TODO
+        headers.set(CacheControl(vec![
+            CacheDirective::NoCache,
+            CacheDirective::NoStore,
+            CacheDirective::MustRevalidate,
+        ]));
         headers.set(ContentType::json());
         headers.set(ContentLength(encoded.len() as u64));
 

@@ -107,7 +107,16 @@ where
         let f = parse_req(req)
             .map_err(E::from)
             .and_then(move |req| T::call(&obj, req))
-            .then(|resp| Reply::from(resp).reply());
+            .then(|resp| {
+                let status = match resp.is_ok() {
+                    true => hyper::StatusCode::Ok,
+                    false => match resp.as_ref().err() {
+                        // TODO: dispatch error type?
+                        _ => hyper::StatusCode::InternalServerError,
+                    },
+                };
+                Reply::from(resp).reply(status)
+            });
         Box::new(f)
     }
 }

@@ -204,6 +204,9 @@ impl Service for Server {
             }
             return serv.call(req);
         }
-        Box::new(ok(resp_serv_err("invalid_endpoint".to_owned())))
+        Box::new(ok(resp_serv_err(
+            "invalid_endpoint".to_owned(),
+            hyper::StatusCode::NotFound,
+        )))
     }
 }

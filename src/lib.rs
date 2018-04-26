@@ -65,7 +65,7 @@ use hyper::server::{Request, Response, Service};
 pub fn resp_err() -> Response {
     hyper::server::Response::new().with_status(hyper::StatusCode::InternalServerError)
 }
-pub fn resp_serv_err<E>(e: E) -> Response
+pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response
 where
     E: Debug + Display,
 {
@@ -78,6 +78,7 @@ where
     let body: hyper::Body = encoded.into();
     hyper::server::Response::new()
         .with_header(AccessControlAllowOrigin::Any)
+        .with_status(status)
         .with_body(body)
 }
 

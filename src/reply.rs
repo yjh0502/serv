@@ -12,11 +12,14 @@ where
     E: From<Error> + 'static,
 {
     /// write reply body
-    fn reply(&self) -> HyperFuture {
+    fn reply(&self, status: hyper::StatusCode) -> HyperFuture {
         let encoded = match serde_json::to_vec(&self) {
             Ok(encoded) => encoded,
             Err(e) => {
-                return Box::new(ok(resp_serv_err::<Error>(ErrorKind::EncodeJson(e).into())));
+                return Box::new(ok(resp_serv_err::<Error>(
+                    ErrorKind::EncodeJson(e).into(),
+                    hyper::StatusCode::InternalServerError,
+                )));
             }
         };
 
@@ -34,7 +37,7 @@ where
 
         let resp = hyper::server::Response::new()
             .with_headers(headers)
-            .with_status(hyper::StatusCode::Ok)
+            .with_status(status)
             .with_body(body);
 
         Box::new(ok(resp))

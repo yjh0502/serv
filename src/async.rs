@@ -15,7 +15,7 @@ where
     reply::ServiceReply::serv_state(state, f)
 }
 
-/// `service` builds `HyperService` with given function `F`.
+/// `serv` builds `HyperService` with given function `F`.
 pub fn serv<F, Req, Resp, E>(f: F) -> HyperService
 where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>> + 'static,

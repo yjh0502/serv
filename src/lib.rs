@@ -16,6 +16,7 @@ extern crate serde_json;
 extern crate serde_qs;
 extern crate tokio_core;
 extern crate tokio_io;
+extern crate tokio_uds;
 extern crate url;
 
 pub mod error {
@@ -77,7 +78,6 @@ where
 
     let body: hyper::Body = encoded.into();
     hyper::server::Response::new()
-        .with_header(AccessControlAllowOrigin::Any)
         .with_status(status)
         .with_body(body)
 }

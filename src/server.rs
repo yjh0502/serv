@@ -117,6 +117,34 @@ impl Server {
         self.routes.push((method, re, service));
     }
 
+    pub fn run_local<P: AsRef<std::path::Path>>(
+        self,
+        path: P,
+        handle: Handle,
+    ) -> Box<Future<Item = (), Error = Error>> {
+        use tokio_uds;
+
+        let path = path.as_ref();
+        if let Err(_) = std::fs::remove_file(path) {
+            //
+        }
+
+        let server = Rc::new(self);
+        let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
+        let protocol = Http::<hyper::Chunk>::new();
+
+        let f_listen = listener
+            .incoming()
+            .for_each(move |(sock, _)| {
+                let f = protocol.serve_connection(sock, server.clone());
+                handle.spawn(f.then(|_| Ok(())));
+                Ok(())
+            })
+            .map_err(Error::from);
+
+        Box::new(f_listen)
+    }
+
     pub fn run(
         self,
         addr: std::net::SocketAddr,
@@ -130,13 +158,11 @@ impl Server {
 
         let f_listen = serve
             .for_each(move |conn| {
-                handle.spawn(
-                    conn.map(|_| ())
-                        .map_err(|err| error!("serve error: {:?}", err)),
-                );
-                ok(())
+                let f = conn.map(|_| ())
+                    .map_err(|err| error!("serve error: {:?}", err));
+                handle.spawn(f);
+                Ok(())
             })
-            .into_future()
             .map_err(Error::from);
 
         Box::new(f_listen)

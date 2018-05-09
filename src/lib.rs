@@ -78,6 +78,7 @@ where
 
     let body: hyper::Body = encoded.into();
     hyper::server::Response::new()
+        .with_header(AccessControlAllowOrigin::Any)
         .with_status(status)
         .with_body(body)
 }

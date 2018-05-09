@@ -11,15 +11,12 @@ use hyper::server::{Http, Request, Response, Service};
 use regex;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Handle;
+use tokio_io::{AsyncRead, AsyncWrite};
+use url;
 
 use error::*;
 use resp_serv_err;
 use HyperService;
-
-#[derive(Default)]
-pub struct Server {
-    routes: Vec<(hyper::Method, regex::Regex, HyperService)>,
-}
 
 fn handle_h2c(
     server: Rc<Server>,
@@ -101,6 +98,69 @@ fn handle_h2c(
     handle.spawn(f)
 }
 
+fn handle_sock_http1<I>(server: Rc<Server>, handle: &Handle, io: I)
+where
+    I: AsyncRead + AsyncWrite + 'static,
+{
+    let protocol = Http::<hyper::Chunk>::new();
+    let f = protocol.serve_connection(io, server.clone());
+    handle.spawn(f.then(|_| Ok(())));
+}
+
+fn handle_sock_h2c<I>(server: Rc<Server>, handle: &Handle, io: I)
+where
+    I: AsyncRead + AsyncWrite + 'static,
+{
+    let handle0 = handle.clone();
+    let connection = h2::server::handshake(io)
+        .and_then(move |conn| {
+            info!("H2 connection bound");
+
+            conn.for_each(move |(req, respond)| {
+                handle_h2c(server.clone(), handle0.clone(), req, respond);
+                Ok(())
+            })
+        })
+        .and_then(|_| Ok(()))
+        .then(|res| {
+            if let Err(e) = res {
+                info!("  -> err={:?}", e);
+            } else {
+                info!("closed");
+            }
+
+            Ok(())
+        });
+
+    handle.spawn(connection);
+}
+
+fn handle_incoming<S, I, A, F>(
+    server: Rc<Server>,
+    handle: Handle,
+    stream: S,
+    f: F,
+) -> Box<Future<Item = (), Error = Error>>
+where
+    S: Stream<Item = (I, A), Error = std::io::Error> + 'static,
+    I: AsyncRead + AsyncWrite + 'static,
+    A: 'static,
+    F: Fn(Rc<Server>, &Handle, I) + 'static,
+{
+    let f_listen = stream
+        .for_each(move |(sock, _)| {
+            f(server.clone(), &handle, sock);
+            Ok(())
+        })
+        .map_err(Error::from);
+    Box::new(f_listen)
+}
+
+#[derive(Default)]
+pub struct Server {
+    routes: Vec<(hyper::Method, regex::Regex, HyperService)>,
+}
+
 impl Server {
     pub fn new() -> Self {
         Self { routes: Vec::new() }
@@ -117,95 +177,53 @@ impl Server {
         self.routes.push((method, re, service));
     }
 
-    pub fn run_local<P: AsRef<std::path::Path>>(
-        self,
-        path: P,
-        handle: Handle,
-    ) -> Box<Future<Item = (), Error = Error>> {
+    pub fn run(self, url: url::Url, handle: Handle) -> Box<Future<Item = (), Error = Error>> {
         use tokio_uds;
 
-        let path = path.as_ref();
-        if let Err(_) = std::fs::remove_file(path) {
-            //
+        let (is_http2, is_unix) = match url.scheme() {
+            "http" => (false, false),
+            "http+unix" => (false, true),
+            "h2c" => (true, false),
+            "h2c+unix" => (true, true),
+            "" => (false, false),
+            schema => {
+                panic!("unexpected schema: {}", schema);
+            }
+        };
+
+        let server = Rc::new(self);
+        if is_unix {
+            let handle_fn = if is_http2 {
+                handle_sock_h2c
+            } else {
+                handle_sock_http1
+            };
+
+            let path = url.path();
+            if let Err(_) = std::fs::remove_file(path) {
+                //ignore error?
+            }
+
+            let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
+            return handle_incoming(server, handle, listener.incoming(), handle_fn);
+        } else {
+            let handle_fn = if is_http2 {
+                handle_sock_h2c
+            } else {
+                handle_sock_http1
+            };
+
+            //TODO: with_deault_port
+            let addr_str = format!(
+                "{}:{}",
+                url.host().expect("failed to get host"),
+                url.port().expect("failed to get port")
+            );
+            let addr = addr_str.parse().expect("failed to parse addr");
+
+            let listener = TcpListener::bind(&addr, &handle).unwrap();
+            handle_incoming(server, handle, listener.incoming(), handle_fn)
         }
-
-        let server = Rc::new(self);
-        let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
-        let protocol = Http::<hyper::Chunk>::new();
-
-        let f_listen = listener
-            .incoming()
-            .for_each(move |(sock, _)| {
-                let f = protocol.serve_connection(sock, server.clone());
-                handle.spawn(f.then(|_| Ok(())));
-                Ok(())
-            })
-            .map_err(Error::from);
-
-        Box::new(f_listen)
-    }
-
-    pub fn run(
-        self,
-        addr: std::net::SocketAddr,
-        handle: Handle,
-    ) -> Box<Future<Item = (), Error = Error>> {
-        let server = Rc::new(self);
-
-        let serve = Http::new()
-            .serve_addr_handle(&addr, &handle, move || Ok(server.clone()))
-            .unwrap();
-
-        let f_listen = serve
-            .for_each(move |conn| {
-                let f = conn.map(|_| ())
-                    .map_err(|err| error!("serve error: {:?}", err));
-                handle.spawn(f);
-                Ok(())
-            })
-            .map_err(Error::from);
-
-        Box::new(f_listen)
-    }
-
-    pub fn run_h2c(
-        self,
-        addr: std::net::SocketAddr,
-        handle: Handle,
-    ) -> Box<Future<Item = (), Error = Error>> {
-        let server = Rc::new(self);
-        let listener = TcpListener::bind(&addr, &handle).unwrap();
-
-        let f_listen = listener.incoming().for_each(move |(socket, _)| {
-            // let socket = io_dump::Dump::to_stdout(socket);
-
-            let server = server.clone();
-            let handle0 = handle.clone();
-            let connection = h2::server::handshake(socket)
-                .and_then(move |conn| {
-                    info!("H2 connection bound");
-
-                    conn.for_each(move |(req, respond)| {
-                        handle_h2c(server.clone(), handle0.clone(), req, respond);
-                        Ok(())
-                    })
-                })
-                .and_then(|_| Ok(()))
-                .then(|res| {
-                    if let Err(e) = res {
-                        info!("  -> err={:?}", e);
-                    } else {
-                        info!("closed");
-                    }
-
-                    Ok(())
-                });
-
-            handle.spawn(connection);
-            Ok(())
-        });
-
-        Box::new(f_listen.map_err(Error::from))
     }
 }
 

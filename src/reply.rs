@@ -25,6 +25,12 @@ where
         };
 
         let mut headers = Headers::new();
+        headers.set(AccessControlAllowOrigin::Any); //TODO
+        headers.set(CacheControl(vec![
+            CacheDirective::NoCache,
+            CacheDirective::NoStore,
+            CacheDirective::MustRevalidate,
+        ]));
         headers.set(ContentType::json());
         headers.set(ContentLength(encoded.len() as u64));
 

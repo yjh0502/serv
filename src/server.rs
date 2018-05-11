@@ -184,6 +184,7 @@ impl Server {
         handle: Handle,
         is_http2: bool,
     ) -> Box<Future<Item = (), Error = Error>> {
+        let server = Rc::new(self);
         use tokio_uds;
         let handle_fn = if is_http2 {
             handle_sock_h2c

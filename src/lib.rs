@@ -16,6 +16,7 @@ extern crate serde_json;
 extern crate serde_qs;
 extern crate tokio_core;
 extern crate tokio_io;
+#[cfg(features = "uds")]
 extern crate tokio_uds;
 extern crate url;
 

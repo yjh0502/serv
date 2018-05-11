@@ -177,9 +177,40 @@ impl Server {
         self.routes.push((method, re, service));
     }
 
-    pub fn run(self, url: url::Url, handle: Handle) -> Box<Future<Item = (), Error = Error>> {
+    #[cfg(features = "uds")]
+    pub fn run_uds(
+        self,
+        url: url::Url,
+        handle: Handle,
+        is_http2: bool,
+    ) -> Box<Future<Item = (), Error = Error>> {
         use tokio_uds;
+        let handle_fn = if is_http2 {
+            handle_sock_h2c
+        } else {
+            handle_sock_http1
+        };
 
+        let path = url.path();
+        if let Err(_) = std::fs::remove_file(path) {
+            //ignore error?
+        }
+
+        let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
+        return handle_incoming(server, handle, listener.incoming(), handle_fn);
+    }
+
+    #[cfg(not(features = "uds"))]
+    pub fn run_uds(
+        self,
+        _url: url::Url,
+        _handle: Handle,
+        _is_http2: bool,
+    ) -> Box<Future<Item = (), Error = Error>> {
+        panic!("uds not supported: {:?}", _url);
+    }
+
+    pub fn run(self, url: url::Url, handle: Handle) -> Box<Future<Item = (), Error = Error>> {
         let (is_http2, is_unix) = match url.scheme() {
             "http" => (false, false),
             "http+unix" => (false, true),
@@ -191,22 +222,10 @@ impl Server {
             }
         };
 
-        let server = Rc::new(self);
         if is_unix {
-            let handle_fn = if is_http2 {
-                handle_sock_h2c
-            } else {
-                handle_sock_http1
-            };
-
-            let path = url.path();
-            if let Err(_) = std::fs::remove_file(path) {
-                //ignore error?
-            }
-
-            let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
-            return handle_incoming(server, handle, listener.incoming(), handle_fn);
+            self.run_uds(url, handle, is_http2)
         } else {
+            let server = Rc::new(self);
             let handle_fn = if is_http2 {
                 handle_sock_h2c
             } else {

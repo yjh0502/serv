@@ -177,7 +177,7 @@ impl Server {
         self.routes.push((method, re, service));
     }
 
-    #[cfg(features = "uds")]
+    #[cfg(feature = "uds")]
     pub fn run_uds(
         self,
         url: url::Url,
@@ -200,7 +200,7 @@ impl Server {
         return handle_incoming(server, handle, listener.incoming(), handle_fn);
     }
 
-    #[cfg(not(features = "uds"))]
+    #[cfg(not(feature = "uds"))]
     pub fn run_uds(
         self,
         _url: url::Url,

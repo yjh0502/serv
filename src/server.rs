@@ -14,9 +14,9 @@ use tokio_core::reactor::Handle;
 use tokio_io::{AsyncRead, AsyncWrite};
 use url;
 
+use HyperService;
 use error::*;
 use resp_serv_err;
-use HyperService;
 
 fn handle_h2c(
     server: Rc<Server>,
@@ -24,8 +24,6 @@ fn handle_h2c(
     req: http::Request<h2::RecvStream>,
     mut respond: h2::server::SendResponse<Bytes>,
 ) {
-    eprintln!("req: {:?}", req);
-
     let req = hyper::Request::from(req.map(|recv_stream| {
         let (sender, body) = hyper::Body::pair();
 
@@ -35,7 +33,6 @@ fn handle_h2c(
                 ()
             })
             .fold(sender, |sender, bytes| {
-                eprintln!("data< {:?}", bytes);
                 let chunk = hyper::Chunk::from(bytes);
                 sender.send(Ok(chunk)).map_err(|_e| {
                     //TODO
@@ -43,8 +40,7 @@ fn handle_h2c(
                 })
             })
             .map_err(|_e| {
-                //TODO: error handling
-                eprintln!("error on recv: {:?}", _e);
+                //
             })
             .map(|_sender| ());
         handle.spawn(f);
@@ -56,8 +52,6 @@ fn handle_h2c(
         .call(req)
         .and_then(
             move |resp| -> Box<Future<Item = (), Error = hyper::Error>> {
-                eprintln!("resp: {:?}", resp);
-
                 let mut body = None;
                 let resp = http::Response::from(resp).map(|_body| {
                     body = Some(_body);
@@ -67,33 +61,23 @@ fn handle_h2c(
                 let send_stream = match respond.send_response(resp, false) {
                     Ok(s) => s,
                     Err(_e) => {
-                        eprintln!("error on send_response: {:?}", _e);
                         return Box::new(err(hyper::Error::Method));
                     }
                 };
                 let body = body.unwrap_or_default();
 
-                let f = body.map_err(|_e| {
-                    eprintln!("error on resp body: {:?}", _e);
-                    h2::Reason::NO_ERROR.into()
-                }).fold(send_stream, |mut sender, chunk| {
-                        eprintln!("data> {:?}", chunk);
+                let f = body.map_err(|_e| h2::Reason::NO_ERROR.into())
+                    .fold(send_stream, |mut sender, chunk| {
                         //TODO
                         sender.send_data(chunk.into(), false)?;
                         Ok::<_, h2::Error>(sender)
                     })
                     .and_then(|mut sender| sender.send_data(Vec::new().into(), true));
 
-                Box::new(f.map_err(|_e| {
-                    eprintln!("error on resp body: {:?}", _e);
-                    hyper::Error::Method
-                }))
+                Box::new(f.map_err(|_e| hyper::Error::Method))
             },
         )
-        .map_err(|_e| {
-            eprintln!("error on call: {:?}", _e);
-            ()
-        });
+        .map_err(|_e| ());
 
     handle.spawn(f)
 }

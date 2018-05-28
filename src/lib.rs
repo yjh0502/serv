@@ -31,7 +31,7 @@ pub mod error {
 
         errors {
             UnknownMethod(m: hyper::Method) {
-                description("invalid_endpoint")
+                description("[SERV]invalid_endpoint")
             }
             DecodeJson(e: serde_json::Error) {
                 description("badarg")

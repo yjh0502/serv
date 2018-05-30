@@ -1,9 +1,8 @@
 use super::*;
 
 use async::*;
-use hyper::header::{
-    AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength, ContentType, Headers,
-};
+use hyper::header::{AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength,
+                    ContentType, Headers};
 use std::convert::From;
 
 /// Oneshot-style reply which contains response or error.
@@ -100,7 +99,8 @@ pub enum ServiceReply<T: serde::Serialize, E> {
     #[serde(rename = "error")]
     Err {
         reason: String,
-        msg: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        msg: Option<String>,
         #[serde(skip)]
         _e: E,
     },
@@ -110,6 +110,7 @@ where
     T: serde::Serialize,
     E: Debug + Display,
 {
+    #[cfg(debug_assertions)]
     fn from(res: Result<T, E>) -> ServiceReply<T, E> {
         match res {
             Ok(resp) => ServiceReply::Ok { result: resp },
@@ -117,7 +118,37 @@ where
                 let reason = format!("{}", e);
                 let msg = format!("{:?}", e);
                 trace!("error: {:?}", e);
-                ServiceReply::Err { reason, msg, _e: e }
+                ServiceReply::Err {
+                    reason,
+                    msg: Some(msg),
+                    _e: e,
+                }
+            }
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn from(res: Result<T, E>) -> ServiceReply<T, E> {
+        const ALLOW_PREFIX: &'static str = "[SERV]";
+
+        match res {
+            Ok(resp) => ServiceReply::Ok { result: resp },
+            Err(e) => {
+                trace!("error: {:?}", e);
+                let reason = format!("{}", e);
+                let reason = match reason.starts_with(ALLOW_PREFIX) {
+                    true => {
+                        let len = ALLOW_PREFIX.len();
+                        reason[len..].to_string()
+                    }
+                    false => "internal".to_string(),
+                };
+
+                ServiceReply::Err {
+                    reason,
+                    msg: None,
+                    _e: e,
+                }
             }
         }
     }

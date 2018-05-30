@@ -10,7 +10,7 @@ where
     S: 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: From<Error> + Debug + Display + 'static,
+    E: From<Error> + Debug + std::error::Error + 'static,
 {
     reply::ServiceReply::serv_state(state, f)
 }
@@ -21,7 +21,7 @@ where
     F: Fn(Req) -> Box<Future<Item = Resp, Error = E>> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
     Resp: serde::Serialize + 'static,
-    E: From<Error> + Debug + Display + 'static,
+    E: From<Error> + Debug + std::error::Error + 'static,
 {
     reply::ServiceReply::serv(f)
 }

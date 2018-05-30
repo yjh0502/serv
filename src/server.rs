@@ -253,7 +253,7 @@ impl Service for Server {
             return serv.call(req);
         }
         Box::new(ok(resp_serv_err(
-            "invalid_endpoint".to_owned(),
+            Error::from("invalid_endpoint"),
             hyper::StatusCode::NotFound,
         )))
     }

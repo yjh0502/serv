@@ -31,7 +31,7 @@ pub mod error {
 
         errors {
             UnknownMethod(m: hyper::Method) {
-                description("[SERV]invalid_endpoint")
+                description("invalid_endpoint")
             }
             DecodeJson(e: serde_json::Error) {
                 description("badarg")
@@ -54,10 +54,9 @@ pub mod server;
 pub mod staticfile;
 pub mod sync;
 
-use std::fmt::{Debug, Display};
-
 pub use error::{Error, ErrorKind};
 pub use server::Server;
+use std::fmt::Debug;
 
 use futures::future::*;
 use futures::*;
@@ -69,7 +68,7 @@ pub fn resp_err() -> Response {
 }
 pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response
 where
-    E: Debug + Display,
+    E: Debug + std::error::Error,
 {
     let reply = reply::ServiceReply::<(), E>::from(Err(e));
     let encoded = match serde_json::to_vec(&reply) {

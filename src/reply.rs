@@ -105,50 +105,45 @@ pub enum ServiceReply<T: serde::Serialize, E> {
         _e: E,
     },
 }
-impl<T, E> From<Result<T, E>> for ServiceReply<T, E>
+
+impl<T, E> From<E> for ServiceReply<T, E>
 where
     T: serde::Serialize,
-    E: Debug + Display,
+    E: Debug + std::error::Error,
 {
     #[cfg(debug_assertions)]
-    fn from(res: Result<T, E>) -> ServiceReply<T, E> {
-        match res {
-            Ok(resp) => ServiceReply::Ok { result: resp },
-            Err(e) => {
-                let reason = format!("{}", e);
-                let msg = format!("{:?}", e);
-                trace!("error: {:?}", e);
-                ServiceReply::Err {
-                    reason,
-                    msg: Some(msg),
-                    _e: e,
-                }
-            }
+    fn from(e: E) -> ServiceReply<T, E> {
+        let reason = e.description().to_owned();
+        let msg = format!("{:?}", e);
+        ServiceReply::Err {
+            reason,
+            msg: Some(msg),
+            _e: e,
         }
     }
 
     #[cfg(not(debug_assertions))]
-    fn from(res: Result<T, E>) -> ServiceReply<T, E> {
-        const ALLOW_PREFIX: &'static str = "[SERV]";
+    fn from(e: E) -> ServiceReply<T, E> {
+        let reason = e.description().to_owned();
+        ServiceReply::Err {
+            reason,
+            msg: None,
+            _e: e,
+        }
+    }
+}
 
+impl<T, E> From<Result<T, E>> for ServiceReply<T, E>
+where
+    T: serde::Serialize,
+    E: Debug + std::error::Error,
+{
+    fn from(res: Result<T, E>) -> ServiceReply<T, E> {
         match res {
             Ok(resp) => ServiceReply::Ok { result: resp },
             Err(e) => {
                 trace!("error: {:?}", e);
-                let reason = format!("{}", e);
-                let reason = match reason.starts_with(ALLOW_PREFIX) {
-                    true => {
-                        let len = ALLOW_PREFIX.len();
-                        reason[len..].to_string()
-                    }
-                    false => "internal".to_string(),
-                };
-
-                ServiceReply::Err {
-                    reason,
-                    msg: None,
-                    _e: e,
-                }
+                e.into()
             }
         }
     }
@@ -157,6 +152,6 @@ where
 impl<T, E> Reply<T, E> for ServiceReply<T, E>
 where
     T: serde::Serialize + 'static,
-    E: From<Error> + Debug + Display + 'static,
+    E: From<Error> + Debug + std::error::Error + 'static,
 {
 }

@@ -26,6 +26,7 @@ pub mod error {
     error_chain!{
         foreign_links {
             Hyper(hyper::Error);
+            H2(h2::Error);
             Io(std::io::Error);
         }
 

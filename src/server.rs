@@ -18,68 +18,72 @@ use HyperService;
 use error::*;
 use resp_serv_err;
 
-fn handle_h2c(
-    server: Rc<Server>,
-    handle: Handle,
+fn req_h2_to_h1(
     req: http::Request<h2::RecvStream>,
-    mut respond: h2::server::SendResponse<Bytes>,
-) {
-    let req = hyper::Request::from(req.map(|recv_stream| {
-        let (sender, body) = hyper::Body::pair();
-
-        let f = recv_stream
-            .map_err(|_e| {
-                //TODO
-                ()
-            })
-            .fold(sender, |sender, bytes| {
-                let chunk = hyper::Chunk::from(bytes);
-                sender.send(Ok(chunk)).map_err(|_e| {
-                    //TODO
-                    ()
-                })
-            })
-            .map_err(|_e| {
-                //
-            })
-            .map(|_sender| ());
-        handle.spawn(f);
-
+) -> (impl Future<Item = (), Error = Error>, hyper::Request) {
+    let mut recv_stream = None;
+    let (sender, body) = hyper::Body::pair();
+    let req = hyper::Request::from(req.map(|_recv_stream| {
+        recv_stream = Some(_recv_stream);
         body
     }));
 
-    let f = server
+    let f = recv_stream
+        .unwrap()
+        .map_err(Error::from)
+        .fold(sender, |sender, bytes| {
+            let chunk = hyper::Chunk::from(bytes);
+            sender
+                .send(Ok(chunk))
+                .map_err(|_e| Error::from(format!("failed to send body: {:?}", _e)))
+        })
+        .map(|_sender| ());
+
+    (f, req)
+}
+
+fn resp_h1_to_h2(
+    mut respond: h2::server::SendResponse<Bytes>,
+    resp: hyper::Response,
+) -> impl Future<Item = (), Error = Error> {
+    let mut body = None;
+    let resp = http::Response::from(resp).map(|_body| {
+        body = Some(_body);
+        ()
+    });
+    let body = body.unwrap();
+
+    result(respond.send_response(resp, false))
+        .map_err(Error::from)
+        .and_then(move |send_stream| {
+            body.map_err(Error::from)
+                .fold(send_stream, |mut sender, chunk| {
+                    let bytes: Bytes = chunk.into();
+                    sender.send_data(bytes, false)?;
+                    Ok::<_, Error>(sender)
+                })
+                .and_then(|mut sender| sender.send_data(Bytes::new(), true).map_err(Error::from))
+                .map(|_| ())
+        })
+}
+
+fn handle_h2c(
+    server: Rc<Server>,
+    req: http::Request<h2::RecvStream>,
+    respond: h2::server::SendResponse<Bytes>,
+) -> impl Future<Item = (), Error = Error> {
+    let (f_send, req) = req_h2_to_h1(req);
+    let f_call = server
         .call(req)
-        .and_then(
-            move |resp| -> Box<Future<Item = (), Error = hyper::Error>> {
-                let mut body = None;
-                let resp = http::Response::from(resp).map(|_body| {
-                    body = Some(_body);
-                    ()
-                });
+        .and_then(move |resp| {
+            resp_h1_to_h2(respond, resp).map_err(|_e| {
+                debug!("error on h2 response: {:?}", _e);
+                hyper::Error::Method
+            })
+        })
+        .map_err(Error::from);
 
-                let send_stream = match respond.send_response(resp, false) {
-                    Ok(s) => s,
-                    Err(_e) => {
-                        return Box::new(err(hyper::Error::Method));
-                    }
-                };
-                let body = body.unwrap_or_default();
-
-                let f = body.map_err(|_e| h2::Reason::NO_ERROR.into())
-                    .fold(send_stream, |mut sender, chunk| {
-                        //TODO
-                        sender.send_data(chunk.into(), false)?;
-                        Ok::<_, h2::Error>(sender)
-                    })
-                    .and_then(|mut sender| sender.send_data(Vec::new().into(), true));
-
-                Box::new(f.map_err(|_e| hyper::Error::Method))
-            },
-        )
-        .map_err(|_e| ());
-
-    handle.spawn(f)
+    f_send.join(f_call).map(|_| ())
 }
 
 fn handle_sock_http1<I>(server: Rc<Server>, handle: &Handle, io: I)
@@ -95,25 +99,30 @@ fn handle_sock_h2c<I>(server: Rc<Server>, handle: &Handle, io: I)
 where
     I: AsyncRead + AsyncWrite + 'static,
 {
+    let mut builder = h2::server::Builder::new();
+    builder
+        .initial_window_size(1_000_000)
+        .initial_connection_window_size(100_000_000)
+        .max_concurrent_streams(std::u32::MAX)
+        .max_concurrent_reset_streams(1_000);
+
     let handle0 = handle.clone();
-    let connection = h2::server::handshake(io)
+    let connection = builder
+        .handshake(io)
         .and_then(move |conn| {
             info!("H2 connection bound");
 
             conn.for_each(move |(req, respond)| {
-                handle_h2c(server.clone(), handle0.clone(), req, respond);
+                let f = handle_h2c(server.clone(), req, respond);
+                handle0.spawn(f.map_err(|e| {
+                    debug!("error: {:?}", e);
+                }));
                 Ok(())
             })
         })
-        .and_then(|_| Ok(()))
-        .then(|res| {
-            if let Err(e) = res {
-                info!("  -> err={:?}", e);
-            } else {
-                info!("closed");
-            }
-
-            Ok(())
+        .map(|_| ())
+        .map_err(|e| {
+            debug!("h2 connection error: {:?}", e);
         });
 
     handle.spawn(connection);

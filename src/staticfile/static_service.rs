@@ -133,10 +133,6 @@ where
             _ => return self.upstream.call(req),
         }
 
-        if req.uri().is_absolute() {
-            return self.upstream.call(req);
-        }
-
         let requested_path = RequestedPath::new(&self.root, &req);
         let resp = Response::new().with_headers(self.default_headers.clone());
 

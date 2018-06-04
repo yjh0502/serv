@@ -14,9 +14,9 @@ use tokio_core::reactor::Handle;
 use tokio_io::{AsyncRead, AsyncWrite};
 use url;
 
-use HyperService;
 use error::*;
 use resp_serv_err;
+use HyperService;
 
 fn req_h2_to_h1(
     req: http::Request<h2::RecvStream>,

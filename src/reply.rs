@@ -18,7 +18,7 @@ where
             Err(e) => {
                 return Box::new(ok(resp_serv_err::<Error>(
                     ErrorKind::EncodeJson(e).into(),
-                    hyper::StatusCode::InternalServerError,
+                    hyper::StatusCode::Ok,
                 )));
             }
         };

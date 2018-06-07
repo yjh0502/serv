@@ -1,6 +1,6 @@
 [package]
 name = "serv"
-version = "0.1.9"
+version = "0.1.11"
 authors = ["yjh0502 <yjh0502@gmail.com>"]
 
 description = """
@@ -32,7 +32,7 @@ serde_json = "1"
 serde_qs = "0.4"
 tokio-core = "0.1"
 tokio-io = "0.1"
-tokio-uds = { version = "0", optional = true }
+tokio-uds = { version = "0.2", optional = true }
 url = "1"
 
 [dev-dependencies]

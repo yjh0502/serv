@@ -128,21 +128,20 @@ where
     handle.spawn(connection);
 }
 
-fn handle_incoming<S, I, A, F>(
+fn handle_incoming<S, I, F>(
     server: Rc<Server>,
     handle: Handle,
     stream: S,
     f: F,
 ) -> Box<Future<Item = (), Error = Error>>
 where
-    S: Stream<Item = (I, A), Error = std::io::Error> + 'static,
+    S: Stream<Item = I, Error = std::io::Error> + 'static,
     I: AsyncRead + AsyncWrite + 'static,
-    A: 'static,
     F: Fn(Rc<Server>, &Handle, I) + 'static,
 {
     let f_listen = stream
-        .for_each(move |(sock, _)| {
-            f(server.clone(), &handle, sock);
+        .for_each(move |io| {
+            f(server.clone(), &handle, io);
             Ok(())
         })
         .map_err(Error::from);
@@ -190,7 +189,7 @@ impl Server {
             //ignore error?
         }
 
-        let listener = tokio_uds::UnixListener::bind(path, &handle).unwrap();
+        let listener = tokio_uds::UnixListener::bind(path).unwrap();
         return handle_incoming(server, handle, listener.incoming(), handle_fn);
     }
 
@@ -235,7 +234,12 @@ impl Server {
             let addr = addr_str.parse().expect("failed to parse addr");
 
             let listener = TcpListener::bind(&addr, &handle).unwrap();
-            handle_incoming(server, handle, listener.incoming(), handle_fn)
+            handle_incoming(
+                server,
+                handle,
+                listener.incoming().map(|(io, _addr)| io),
+                handle_fn,
+            )
         }
     }
 }

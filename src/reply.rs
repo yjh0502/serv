@@ -1,8 +1,9 @@
 use super::*;
 
 use async::*;
-use hyper::header::{AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength,
-                    ContentType, Headers};
+use hyper::header::{
+    AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength, ContentType, Headers,
+};
 use std::convert::From;
 
 /// Oneshot-style reply which contains response or error.

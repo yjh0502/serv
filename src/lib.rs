@@ -65,7 +65,7 @@ use hyper::header::AccessControlAllowOrigin;
 use hyper::server::{Request, Response, Service};
 
 pub fn resp_err() -> Response {
-    hyper::server::Response::new().with_status(hyper::StatusCode::InternalServerError)
+    hyper::server::Response::new().with_status(hyper::StatusCode::BadRequest)
 }
 pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response
 where

@@ -112,7 +112,7 @@ where
                     true => hyper::StatusCode::Ok,
                     false => match resp.as_ref().err() {
                         // TODO: dispatch error type?
-                        _ => hyper::StatusCode::InternalServerError,
+                        _ => hyper::StatusCode::BadRequest,
                     },
                 };
                 Reply::from(resp).reply(status)

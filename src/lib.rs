@@ -2,8 +2,6 @@ extern crate bytes;
 #[macro_use]
 extern crate error_chain;
 extern crate futures;
-extern crate h2;
-extern crate http;
 extern crate hyper;
 #[macro_use]
 extern crate log;
@@ -12,9 +10,11 @@ extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate http;
 extern crate serde_json;
 extern crate serde_qs;
-extern crate tokio_core;
+extern crate tokio;
+extern crate tokio_current_thread;
 extern crate tokio_io;
 #[cfg(feature = "uds")]
 extern crate tokio_uds;
@@ -26,11 +26,14 @@ pub mod error {
     error_chain!{
         foreign_links {
             Hyper(hyper::Error);
-            H2(h2::Error);
+            Http(http::Error);
             Io(std::io::Error);
         }
 
         errors {
+            UnexpectedMethod(m: hyper::Method) {
+                description("badarg")
+            }
             UnknownMethod(m: hyper::Method) {
                 description("invalid_endpoint")
             }
@@ -52,7 +55,6 @@ type SyncObj<T> = std::rc::Rc<T>;
 pub mod async;
 pub mod reply;
 pub mod server;
-pub mod staticfile;
 pub mod sync;
 
 pub use error::{Error, ErrorKind};
@@ -61,13 +63,18 @@ use std::fmt::Debug;
 
 use futures::future::*;
 use futures::*;
-use hyper::header::AccessControlAllowOrigin;
-use hyper::server::{Request, Response, Service};
+use hyper::header::*;
+use hyper::service::Service;
+use hyper::{Body, Request, Response};
 
-pub fn resp_err() -> Response {
-    hyper::server::Response::new().with_status(hyper::StatusCode::BadRequest)
+pub fn resp_err() -> Response<Body> {
+    Response::builder()
+        .status(hyper::StatusCode::BAD_REQUEST)
+        .body(Body::empty())
+        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
-pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response
+
+pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response<Body>
 where
     E: Debug + std::error::Error,
 {
@@ -77,52 +84,59 @@ where
         Err(_e) => return resp_err(),
     };
 
-    let body: hyper::Body = encoded.into();
-    hyper::server::Response::new()
-        .with_header(AccessControlAllowOrigin::Any)
-        .with_status(status)
-        .with_body(body)
+    Response::builder()
+        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .status(status)
+        .body(Body::from(encoded))
+        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
-pub type HyperFuture = Box<Future<Item = Response, Error = hyper::Error>>;
-pub type HyperService = Box<
-    Service<Request = Request, Response = Response, Error = hyper::Error, Future = HyperFuture>,
+pub type HyperFuture = Box<Future<Item = Response<Body>, Error = hyper::Error>>;
+pub type HyperService =
+    Box<Service<ReqBody = Body, ResBody = Body, Error = hyper::Error, Future = HyperFuture>>;
+pub type HyperServiceSend = Box<
+    Service<
+        ReqBody = Body,
+        ResBody = Body,
+        Error = hyper::Error,
+        Future = Box<Future<Item = Response<Body>, Error = hyper::Error> + Send>,
+    >,
 >;
 
 /// parse API req from qs/body
-fn parse_req<R>(req: Request) -> Box<Future<Item = R, Error = Error>>
+fn parse_req<R>(req: Request<Body>) -> Box<Future<Item = R, Error = Error>>
 where
     R: for<'de> serde::Deserialize<'de> + 'static,
 {
-    use hyper::Method::*;
+    use hyper::Method;
     match req.method().clone() {
-        Get | Delete => {
+        Method::GET | Method::DELETE => {
             let qs = req.uri().query().unwrap_or("");
             let req: Result<R, Error> =
                 serde_qs::from_str(qs).map_err(|e| ErrorKind::DecodeQs(e).into());
             Box::new(result(req))
         }
-        Put | Post => {
+        Method::PUT | Method::POST => {
             let buf = Vec::new();
-            let f = req.body()
+
+            let f = req
+                .into_body()
                 .map_err(Error::from)
                 .fold(buf, |mut buf, chunk| {
                     buf.extend_from_slice(&chunk);
                     //TODO: move to config?
-                    let res = if buf.len() > 1024 * 1024 * 4 {
+                    if buf.len() > 1024 * 1024 * 4 {
                         Err(Error::from("body too large"))
                     } else {
                         Ok(buf)
-                    };
-                    result(res)
+                    }
                 })
-                .and_then(move |chunk| {
-                    result(serde_json::from_slice(&chunk))
-                        .map_err(|e| ErrorKind::DecodeJson(e).into())
+                .and_then(move |chunk: Vec<u8>| {
+                    serde_json::from_slice(&chunk).map_err(|e| ErrorKind::DecodeJson(e).into())
                 });
             Box::new(f)
         }
-        method => Box::new(err(ErrorKind::UnknownMethod(method).into())),
+        m => Box::new(err(ErrorKind::UnexpectedMethod(m).into())),
     }
 }
 

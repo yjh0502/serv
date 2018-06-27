@@ -4,8 +4,10 @@ extern crate hyper;
 #[macro_use]
 extern crate serde_derive;
 extern crate serv;
+extern crate tokio;
 
-use hyper::server::{const_service, Http};
+use hyper::rt::Future;
+
 mod error {
     use super::*;
 
@@ -40,10 +42,17 @@ fn add(req: AddReq) -> Result<AddResp> {
 }
 
 fn main() {
+    use serv::server::{Routes, Server};
     let addr = ([127, 0, 0, 1], 3000).into();
-    let service = const_service(serv::sync::serv(add));
 
-    let server = Http::new().bind(&addr, service).unwrap();
-    eprintln!("listen: {}", server.local_addr().unwrap());
-    server.run().unwrap();
+    let mut routes = Routes::new();
+    routes.push(hyper::Method::GET, "/", serv::sync::serv(add));
+    let server = Server::new(routes);
+
+    let server = hyper::server::Server::bind(&addr)
+        .serve(move || Ok::<_, hyper::Error>(server.clone()))
+        .map_err(|e| eprintln!("failed to serve: {:?}", e));
+
+    let mut rt = tokio::runtime::current_thread::Runtime::new().expect("failed to create runtime");
+    rt.block_on(server).expect("error on runtime");
 }

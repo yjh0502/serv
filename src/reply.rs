@@ -1,9 +1,7 @@
 use super::*;
 
 use async::*;
-use hyper::header::{
-    AccessControlAllowOrigin, CacheControl, CacheDirective, ContentLength, ContentType, Headers,
-};
+use hyper::header::*;
 use std::convert::From;
 
 /// Oneshot-style reply which contains response or error.
@@ -19,29 +17,24 @@ where
             Err(e) => {
                 return Box::new(ok(resp_serv_err::<Error>(
                     ErrorKind::EncodeJson(e).into(),
-                    hyper::StatusCode::Ok,
+                    hyper::StatusCode::OK,
                 )));
             }
         };
 
-        let mut headers = Headers::new();
-        headers.set(AccessControlAllowOrigin::Any); //TODO
-        headers.set(CacheControl(vec![
-            CacheDirective::NoCache,
-            CacheDirective::NoStore,
-            CacheDirective::MustRevalidate,
-        ]));
-        headers.set(ContentType::json());
-        headers.set(ContentLength(encoded.len() as u64));
+        let header_len = HeaderValue::from_str(&encoded.len().to_string())
+            .expect("should not b an invalid utf-8");
 
-        let body: hyper::Body = encoded.into();
-
-        let resp = hyper::server::Response::new()
-            .with_headers(headers)
-            .with_status(status)
-            .with_body(body);
-
-        Box::new(ok(resp))
+        Box::new(result(
+            Response::builder()
+                .status(status)
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .header(CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                .header(CONTENT_TYPE, "application/json")
+                .header(CONTENT_LENGTH, header_len)
+                .body(encoded.into())
+                .or_else(|e| Ok(resp_serv_err(e, hyper::StatusCode::OK))),
+        ))
     }
 
     /// `serv_state` build `HyperService` with given function `F` and state `S`.
@@ -154,5 +147,4 @@ impl<T, E> Reply<T, E> for ServiceReply<T, E>
 where
     T: serde::Serialize + 'static,
     E: From<Error> + Debug + std::error::Error + 'static,
-{
-}
+{}

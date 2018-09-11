@@ -166,7 +166,7 @@ impl Routes {
     fn route(&self, method: hyper::Method, path: &str) -> Option<&RouteService> {
         let s = format!("{}?{}?", method, path);
         for (ref key, ref route) in &self.routes {
-            if *key == s {
+            if s.starts_with(key) {
                 return Some(route);
             }
         }

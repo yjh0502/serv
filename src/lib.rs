@@ -5,11 +5,11 @@ extern crate futures;
 extern crate hyper;
 #[macro_use]
 extern crate log;
-extern crate net2;
-extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[cfg(feature = "fst")]
+extern crate fst;
 extern crate http;
 extern crate serde_json;
 extern crate serde_qs;
@@ -34,7 +34,7 @@ pub mod error {
             UnexpectedMethod(m: hyper::Method) {
                 description("badarg")
             }
-            UnknownMethod(m: hyper::Method) {
+            InvalidEndpoint {
                 description("invalid_endpoint")
             }
             DecodeJson(e: serde_json::Error) {
@@ -78,7 +78,7 @@ pub fn resp_serv_err<E>(e: E, status: hyper::StatusCode) -> Response<Body>
 where
     E: Debug + std::error::Error,
 {
-    let reply = reply::ServiceReply::<(), E>::from(Err(e));
+    let reply = reply::ServiceReply::<(), E>::from(e);
     let encoded = match serde_json::to_vec(&reply) {
         Ok(v) => v,
         Err(_e) => return resp_err(),

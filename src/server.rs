@@ -6,7 +6,6 @@ use futures::future::*;
 use futures::*;
 use hyper;
 use hyper::{Body, Request, Response};
-use regex;
 use tokio::net::TcpListener;
 use tokio_current_thread as current_thread;
 use tokio_io::{AsyncRead, AsyncWrite};
@@ -42,22 +41,13 @@ where
             f(server.clone(), io);
             Ok(())
         })
-        .map_err(Error::from);
+        .map_err(|e| Error::from(e));
     Box::new(f_listen)
 }
 
 enum RoutePath {
     Exact(String),
-    Regex(regex::Regex),
-}
-
-impl RoutePath {
-    fn is_match(&self, path: &str) -> bool {
-        match self {
-            RoutePath::Exact(s) => path == s,
-            RoutePath::Regex(re) => re.is_match(path),
-        }
-    }
+    Prefix(String),
 }
 
 enum RouteService {
@@ -75,43 +65,112 @@ impl From<HyperServiceSend> for RouteService {
     }
 }
 
+#[cfg(feature = "fst")]
+type FstMap = ::fst::Map;
+#[cfg(not(feature = "fst"))]
+type FstMap = ();
+
 #[derive(Default)]
 pub struct Routes {
-    routes: Vec<(hyper::Method, RoutePath, RouteService)>,
+    routes: Vec<(String, RouteService)>,
+    #[allow(unused)]
+    map: FstMap,
 }
+
 impl Routes {
     pub fn new() -> Self {
-        Self { routes: Vec::new() }
+        Self {
+            routes: Vec::new(),
+            map: Default::default(),
+        }
     }
 
     fn push_serv<S>(&mut self, method: hyper::Method, path: RoutePath, service: S)
     where
         S: Into<RouteService>,
     {
-        self.routes.push((method, path, service.into()));
+        let key = match path {
+            RoutePath::Exact(s) => format!("{}?{}?", method, s),
+            RoutePath::Prefix(s) => format!("{}?{}", method, s),
+        };
+        self.routes.push((key, service.into()));
     }
 
     pub fn push(&mut self, method: hyper::Method, path: &str, service: HyperService) {
         self.push_serv(method, RoutePath::Exact(path.to_owned()), service)
     }
 
-    pub fn push_exp(&mut self, method: hyper::Method, regexp: &str, service: HyperService) {
-        let re: regex::Regex = regexp.parse().unwrap();
-        self.push_serv(method, RoutePath::Regex(re), service)
+    pub fn push_prefix(&mut self, method: hyper::Method, prefix: &str, service: HyperService) {
+        self.push_serv(method, RoutePath::Prefix(prefix.to_owned()), service)
     }
 
     pub fn push_send(&mut self, method: hyper::Method, path: &str, service: HyperServiceSend) {
         self.push_serv(method, RoutePath::Exact(path.to_owned()), service)
     }
 
-    pub fn push_send_exp(
+    pub fn push_send_prefix(
         &mut self,
         method: hyper::Method,
-        regexp: &str,
+        prefix: &str,
         service: HyperServiceSend,
     ) {
-        let re: regex::Regex = regexp.parse().unwrap();
-        self.push_serv(method, RoutePath::Regex(re), service)
+        self.push_serv(method, RoutePath::Prefix(prefix.to_owned()), service)
+    }
+
+    #[cfg(feature = "fst")]
+    fn build(&mut self) {
+        self.routes.sort_by(|(k1, _s1), (k2, _s2)| k1.cmp(k2));
+        self.map = ::fst::Map::from_iter(
+            self.routes
+                .iter()
+                .enumerate()
+                .map(|(idx, (key, _serv))| (key.to_owned(), idx as u64)),
+        ).expect("failed to build map");
+    }
+
+    #[cfg(feature = "fst")]
+    fn longest_match(&self, key: &[u8]) -> Option<usize> {
+        let fst = self.map.as_fst();
+        let mut node = fst.root();
+        let mut last_out = None;
+        let mut out = ::fst::raw::Output::zero();
+        for b in key {
+            node = match node.find_input(*b) {
+                None => {
+                    break;
+                }
+                Some(i) => {
+                    let t = node.transition(i);
+                    out = out.cat(t.out);
+                    fst.node(t.addr)
+                }
+            };
+            if node.is_final() {
+                last_out = Some(out);
+            }
+        }
+        last_out.map(|o| o.value() as usize)
+    }
+
+    #[cfg(feature = "fst")]
+    fn route(&self, method: hyper::Method, path: &str) -> Option<&RouteService> {
+        let s = format!("{}?{}?", method, path);
+        let idx = self.longest_match(s.as_bytes())?;
+        self.routes.get(idx).map(|(_key, serv)| serv)
+    }
+
+    #[cfg(not(feature = "fst"))]
+    fn build(&mut self) {}
+
+    #[cfg(not(feature = "fst"))]
+    fn route(&self, method: hyper::Method, path: &str) -> Option<&RouteService> {
+        let s = format!("{}?{}?", method, path);
+        for (ref key, ref route) in &self.routes {
+            if *key == s {
+                return Some(route);
+            }
+        }
+        None
     }
 }
 
@@ -121,7 +180,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(routes: Routes) -> Self {
+    pub fn new(mut routes: Routes) -> Self {
+        routes.build();
         Self {
             routes: Rc::new(routes),
         }
@@ -183,27 +243,15 @@ impl hyper::service::Service for Server {
         info!("req: {} {}", method, uri);
 
         let path = uri.path();
-        for (ref route_method, ref route_path, ref serv) in self.routes.routes.iter() {
-            if *route_method != method {
-                continue;
-            }
-            if !route_path.is_match(path) {
-                continue;
-            }
-
+        if let Some(serv) = self.routes.route(method, path) {
             match serv {
-                RouteService::NotSend(serv) => {
-                    return serv.borrow_mut().call(req);
-                }
-                RouteService::Send(serv) => {
-                    return serv.borrow_mut().call(req);
-                }
+                RouteService::NotSend(serv) => serv.borrow_mut().call(req),
+                RouteService::Send(serv) => serv.borrow_mut().call(req),
             }
+        } else {
+            let e = Error::from(ErrorKind::InvalidEndpoint);
+            Box::new(ok(resp_serv_err(e, hyper::StatusCode::NOT_FOUND)))
         }
-        Box::new(ok(resp_serv_err(
-            Error::from("invalid_endpoint"),
-            hyper::StatusCode::NOT_FOUND,
-        )))
     }
 }
 

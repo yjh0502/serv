@@ -19,12 +19,11 @@ travis-ci = { repository = "yjh0502/serv" }
 [dependencies]
 bytes = "0.4"
 error-chain = "0.12"
+fst = { version = "0.3", optional = true }
 futures = "0.1"
 http = "0.1"
 hyper = { git = "https://github.com/yjh0502/hyper", branch = "loose_types" }
 log = "0.4"
-net2 = "0.2"
-regex = "1"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"

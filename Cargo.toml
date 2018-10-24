@@ -22,7 +22,7 @@ error-chain = "0.12"
 fst = { version = "0.3", optional = true }
 futures = "0.1"
 http = "0.1"
-hyper = { git = "https://github.com/yjh0502/hyper", branch = "loose_types" }
+hyper = { git = "https://github.com/hyperium/hyper" }
 log = "0.4"
 serde = "1"
 serde_derive = "1"

@@ -3,47 +3,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use futures::future::*;
-use futures::*;
 use hyper;
+use hyper::server::conn::Http;
 use hyper::{Body, Request, Response};
 use tokio::net::TcpListener;
 use tokio_current_thread as current_thread;
-use tokio_io::{AsyncRead, AsyncWrite};
 use url;
 
 use error::*;
 use resp_serv_err;
 use HyperService;
 use HyperServiceSend;
-
-fn handle_sock<I>(server: Server, io: I)
-where
-    I: AsyncRead + AsyncWrite + 'static,
-{
-    let protocol = hyper::server::conn::Http::new();
-    let f = protocol.serve_connection(io, server.clone());
-
-    current_thread::spawn(f.then(|_| Ok(())));
-}
-
-fn handle_incoming<S, I, F>(
-    server: Server,
-    stream: S,
-    f: F,
-) -> Box<Future<Item = (), Error = Error>>
-where
-    S: Stream<Item = I, Error = std::io::Error> + 'static,
-    I: AsyncRead + AsyncWrite + 'static,
-    F: Fn(Server, I) + 'static,
-{
-    let f_listen = stream
-        .for_each(move |io| {
-            f(server.clone(), io);
-            Ok(())
-        })
-        .map_err(|e| Error::from(e));
-    Box::new(f_listen)
-}
 
 enum RoutePath {
     Exact(String),
@@ -197,7 +167,22 @@ impl Server {
         }
 
         let listener = tokio_uds::UnixListener::bind(path).unwrap();
-        return handle_incoming(self, listener.incoming(), handle_sock);
+        let exec = current_thread::TaskExecutor::current();
+        let f = hyper::server::Builder::new(listener.incoming(), Http::new())
+            .executor(exec)
+            .serve(self)
+            .map_err(Error::from);
+        Box::new(f)
+    }
+
+    pub fn run_tcp(self, addr: std::net::SocketAddr) -> Box<Future<Item = (), Error = Error>> {
+        let listener = TcpListener::bind(&addr).unwrap();
+        let exec = current_thread::TaskExecutor::current();
+        let f = hyper::server::Builder::new(listener.incoming(), Http::new())
+            .executor(exec)
+            .serve(self)
+            .map_err(Error::from);
+        Box::new(f)
     }
 
     #[cfg(not(feature = "uds"))]
@@ -224,9 +209,7 @@ impl Server {
                 url.port().expect("failed to get port")
             );
             let addr = addr_str.parse().expect("failed to parse addr");
-
-            let listener = TcpListener::bind(&addr).unwrap();
-            handle_incoming(self, listener.incoming(), handle_sock)
+            self.run_tcp(addr)
         }
     }
 }

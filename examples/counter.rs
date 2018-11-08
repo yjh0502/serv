@@ -5,8 +5,8 @@ extern crate serde_derive;
 extern crate serv;
 extern crate tokio;
 
-use hyper::rt::Future;
 use std::sync::atomic::*;
+use tokio::runtime::current_thread::Runtime;
 
 struct State {
     counter: AtomicUsize,
@@ -23,7 +23,9 @@ fn counter(s: &State, _req: serv::Empty) -> serv::error::Result<CounterResp> {
 
 fn main() {
     use serv::server::{Routes, Server};
-    let addr = ([127, 0, 0, 1], 3000).into();
+    let addr = "http://0.0.0.0:3000"
+        .parse()
+        .expect("failed to parse address");
 
     let state = State {
         counter: Default::default(),
@@ -37,10 +39,6 @@ fn main() {
     );
     let server = Server::new(routes);
 
-    let server = hyper::server::Server::bind(&addr)
-        .serve(move || Ok::<_, hyper::Error>(server.clone()))
-        .map_err(|e| eprintln!("failed to serve: {:?}", e));
-
-    let mut rt = tokio::runtime::current_thread::Runtime::new().expect("failed to create runtime");
-    rt.block_on(server).expect("error on runtime");
+    let mut rt = Runtime::new().expect("failed to create runtime");
+    rt.block_on(server.run(addr)).expect("error on runtime");
 }

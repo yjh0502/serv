@@ -89,7 +89,7 @@ impl<T, Reply> AsyncServiceStateW<T, Reply> {
     }
 }
 
-impl<T, Req, Resp, E, Reply> Service for AsyncServiceStateW<T, Reply>
+impl<T, Req, Resp, E, Reply> hyper::service::Service for AsyncServiceStateW<T, Reply>
 where
     T: AsyncService<Req = Req, Resp = Resp, E = E> + 'static,
     Req: for<'de> serde::Deserialize<'de> + 'static,
@@ -97,22 +97,22 @@ where
     E: From<Error> + 'static,
     Reply: reply::Reply<Resp, E> + 'static,
 {
-    type Request = Request;
-    type Response = Response;
+    type ReqBody = Body;
+    type ResBody = Body;
     type Error = hyper::Error;
     type Future = HyperFuture;
 
-    fn call(&self, req: Self::Request) -> Self::Future {
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
         let obj = self.inner.clone();
         let f = parse_req(req)
             .map_err(E::from)
             .and_then(move |req| T::call(&obj, req))
             .then(|resp| {
                 let status = match resp.is_ok() {
-                    true => hyper::StatusCode::Ok,
+                    true => hyper::StatusCode::OK,
                     false => match resp.as_ref().err() {
                         // TODO: dispatch error type?
-                        _ => hyper::StatusCode::BadRequest,
+                        _ => hyper::StatusCode::BAD_REQUEST,
                     },
                 };
                 Reply::from(resp).reply(status)
